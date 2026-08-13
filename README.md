@@ -63,9 +63,9 @@ As development continues beyond this design foundation, map screens and componen
 | Screen / Feature | Key Files / Paths | Description & Guidelines |
 | :--- | :--- | :--- |
 | **Living Style Guide** | [app/page.tsx](file:///Users/tinochan06/hitrag/app/page.tsx) | Homepage displaying tokens, font scale, and component samples |
-| **Login / Authentication** | `app/login/page.tsx`, `components/auth/login-form.tsx` | Student/Staff HIT credential login interface |
-| **Chat Interface** | `app/chat/page.tsx`, [components/ui/message-bubble.tsx](file:///Users/tinochan06/hitrag/components/ui/message-bubble.tsx) | Main query input, response stream, and message thread |
-| **Citation Drawer / Panel** | `components/citation/citation-panel.tsx`, [components/ui/citation-tag.tsx](file:///Users/tinochan06/hitrag/components/ui/citation-tag.tsx) | Side panel displaying full source document excerpts on click |
+| **Login / Authentication** | [app/login/page.tsx](file:///Users/tinochan06/hitrag/app/login/page.tsx), [components/ui/hitrag-wordmark.tsx](file:///Users/tinochan06/hitrag/components/ui/hitrag-wordmark.tsx) | Student/Staff HIT credential login interface with split navy desktop panel & trust strip |
+| **Chat Interface** | [app/chat/page.tsx](file:///Users/tinochan06/hitrag/app/chat/page.tsx), [app/chat/[conversationId]/page.tsx](file:///Users/tinochan06/hitrag/app/chat/%5BconversationId%5D/page.tsx) | Primary student query canvas, grouped conversation sidebar, auto-growing input, ungrounded fallback state |
+| **Citation Drawer / Panel** | [components/chat/citation-drawer.tsx](file:///Users/tinochan06/hitrag/components/chat/citation-drawer.tsx) | Side panel displaying full source document excerpts on click |
 | **Restricted State** | [components/ui/grounding-rule.tsx](file:///Users/tinochan06/hitrag/components/ui/grounding-rule.tsx) | Ungrounded / restricted access banner when user lacks document tier |
 | **Admin View** | `app/admin/page.tsx`, [components/ui/citation-tag.tsx](file:///Users/tinochan06/hitrag/components/ui/citation-tag.tsx) | Management dashboard for document tier permissions and ingestion status |
 | **Empty State** | `components/chat/empty-state.tsx` | Initial prompt suggestions and welcome guide for new sessions |
