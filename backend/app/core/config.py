@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # JWT Authentication Security Settings
     SECRET_KEY: str = "b271c8216463e1f056695d4db121f2b0eb979284d1f44aa834bc521fbbae9b80"
     ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 Hours
     # CORS Allowed Origins
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:3000",
