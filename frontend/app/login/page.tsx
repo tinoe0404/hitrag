@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { HITRAGWordmark } from "@/components/ui/hitrag-wordmark";
 import { loginUser, registerUser } from "@/lib/api";
 
 export default function LoginPage() {
@@ -14,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState("STUDENT");
+  const [rememberMe, setRememberMe] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -27,7 +27,6 @@ export default function LoginPage() {
 
     try {
       if (isRegisterMode) {
-        // Step 1: Register User Call
         await registerUser({
           email,
           password,
@@ -35,252 +34,199 @@ export default function LoginPage() {
           role,
         });
 
-        setSuccessMessage("Account created successfully! Logging you in...");
-        
-        // Step 2: Auto-login after registration
+        setSuccessMessage("Account created! Logging in...");
         await loginUser(email, password);
         router.push("/chat");
       } else {
-        // Real Login Call
         await loginUser(email, password);
         router.push("/chat");
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Authentication failed. Please check your inputs.";
+      const msg = err instanceof Error ? err.message : "Authentication failed.";
       setError(msg);
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full bg-hit-bg flex items-center justify-center p-0 sm:p-6 lg:p-12">
-      {/* Container: Single column on mobile, Split two-column on desktop */}
-      <div className="w-full max-w-5xl min-h-screen sm:min-h-[640px] bg-hit-surface sm:rounded-2xl border-0 sm:border border-hit-border shadow-none sm:shadow-lg overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+    <div className="min-h-screen w-full bg-[#0d131a] flex items-center justify-center p-4 relative font-sans select-none overflow-hidden">
+      {/* Brick Wall Background Container */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-luminosity filter blur-[1px]"
+        style={{ backgroundImage: `url('/brick-bg.png')` }}
+      />
+
+      {/* Simulated Wall Light Fixture Glow Effect */}
+      <div className="absolute top-[8%] left-1/2 -translate-x-1/2 w-72 h-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-100/40 via-amber-300/10 to-transparent rounded-full blur-2xl pointer-events-none" />
+
+      {/* Glassmorphic Auth Card */}
+      <div className="relative z-10 w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 sm:p-10 shadow-2xl shadow-black/80 flex flex-col items-center">
         
-        {/* Left Column: Sign-in Form (7 columns on desktop) */}
-        <div className="lg:col-span-7 p-6 sm:p-10 lg:p-14 flex flex-col justify-between bg-hit-surface">
-          <div>
-            {/* Mobile Header Wordmark */}
-            <div className="flex items-center justify-between mb-8 sm:mb-12">
-              <HITRAGWordmark variant="navy" />
-              <span className="font-mono text-[10px] bg-hit-bg border border-hit-border text-hit-text-secondary px-2.5 py-1 rounded-full uppercase tracking-wider font-semibold">
-                HIT Network Auth
+        {/* Title */}
+        <h1 className="text-3xl font-bold text-white tracking-wide mb-8 text-center drop-shadow">
+          {isRegisterMode ? "Register" : "Login"}
+        </h1>
+
+        {/* Error / Success Alerts */}
+        {error && (
+          <div className="w-full mb-4 p-3 rounded-xl bg-red-500/20 border border-red-400/40 text-red-200 text-xs font-medium text-center backdrop-blur-md">
+            {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="w-full mb-4 p-3 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-medium text-center backdrop-blur-md">
+            {successMessage}
+          </div>
+        )}
+
+        {/* Auth Form */}
+        <form onSubmit={handleSubmit} className="w-full space-y-4">
+          
+          {/* Full Name Field (Register Mode Only) */}
+          {isRegisterMode && (
+            <div className="relative w-full">
+              <input
+                type="text"
+                required
+                placeholder="Full Name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/20 text-white placeholder-white/70 text-sm focus:outline-none focus:border-white focus:bg-black/30 transition-all pr-12"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-sm">
+                👤
               </span>
             </div>
+          )}
 
-            {/* Form Headline */}
-            <div className="space-y-2 mb-8">
-              <h1 className="font-display text-2xl sm:text-3xl font-bold text-hit-blue tracking-tight">
-                {isRegisterMode ? "Create an Account" : "Sign in to your account"}
-              </h1>
-              <p className="text-sm text-hit-text-secondary">
-                {isRegisterMode
-                  ? "Register your credentials to access HITRAG policy intelligence."
-                  : "Enter your institutional credentials to access HITRAG policy intelligence."}
-              </p>
-            </div>
-
-            {/* Auth Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="p-3.5 rounded-lg bg-hit-warning/10 border border-hit-warning/30 text-hit-warning text-xs font-medium flex items-center gap-2">
-                  <span className="font-mono font-bold">[!]</span>
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {successMessage && (
-                <div className="p-3.5 rounded-lg bg-hit-success/10 border border-hit-success/30 text-hit-success text-xs font-medium flex items-center gap-2">
-                  <span className="font-mono font-bold">[✓]</span>
-                  <span>{successMessage}</span>
-                </div>
-              )}
-
-              {isRegisterMode && (
-                <>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="fullName"
-                      className="block text-xs font-mono font-semibold uppercase tracking-wider text-hit-text-primary"
-                    >
-                      Full Name
-                    </label>
-                    <input
-                      id="fullName"
-                      type="text"
-                      required
-                      placeholder="e.g. Tafadzwa Moyo"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-hit-border bg-hit-bg/50 text-hit-text-primary text-sm placeholder:text-hit-text-secondary/60 focus:bg-hit-surface focus:outline-none transition-colors"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="role"
-                      className="block text-xs font-mono font-semibold uppercase tracking-wider text-hit-text-primary"
-                    >
-                      Institutional Role
-                    </label>
-                    <select
-                      id="role"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-hit-border bg-hit-bg/50 text-hit-text-primary text-sm focus:bg-hit-surface focus:outline-none transition-colors font-mono"
-                    >
-                      <option value="STUDENT">Student</option>
-                      <option value="LECTURER">Lecturer / Staff</option>
-                      <option value="ADMIN">Administrator</option>
-                      <option value="PUBLIC">Public</option>
-                    </select>
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="email"
-                  className="block text-xs font-mono font-semibold uppercase tracking-wider text-hit-text-primary"
-                >
-                  HIT Institutional Email / Registration ID
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  placeholder="e.g. h220104s@hit.ac.zw or jsmith@hit.ac.zw"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-hit-border bg-hit-bg/50 text-hit-text-primary text-sm placeholder:text-hit-text-secondary/60 focus:bg-hit-surface focus:outline-none transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="password"
-                    className="block text-xs font-mono font-semibold uppercase tracking-wider text-hit-text-primary"
-                  >
-                    Password
-                  </label>
-                  {!isRegisterMode && (
-                    <a
-                      href="#forgot-password"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        alert("Contact HIT ICT Helpdesk for credential recovery.");
-                      }}
-                      className="text-xs font-mono text-hit-blue hover:underline"
-                    >
-                      Forgot password?
-                    </a>
-                  )}
-                </div>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-hit-border bg-hit-bg/50 text-hit-text-primary text-sm placeholder:text-hit-text-secondary/60 focus:bg-hit-surface focus:outline-none transition-colors"
-                />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full mt-2 py-3 px-4 rounded-lg bg-hit-blue hover:bg-hit-blue-dark text-white font-display text-sm font-semibold tracking-wide shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer"
+          {/* Role Select (Register Mode Only) */}
+          {isRegisterMode && (
+            <div className="relative w-full">
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/40 text-white text-sm focus:outline-none focus:border-white transition-all appearance-none cursor-pointer"
               >
-                {isLoading ? (
-                  <>
-                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>{isRegisterMode ? "Registering Account..." : "Authenticating HIT Session..."}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{isRegisterMode ? "Register Account" : "Sign In to HITRAG"}</span>
-                    <span className="font-mono text-hit-amber">→</span>
-                  </>
-                )}
-              </button>
+                <option value="STUDENT" className="bg-gray-900 text-white">Student</option>
+                <option value="LECTURER" className="bg-gray-900 text-white">Lecturer / Staff</option>
+                <option value="ADMIN" className="bg-gray-900 text-white">Administrator</option>
+                <option value="PUBLIC" className="bg-gray-900 text-white">Public</option>
+              </select>
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-xs pointer-events-none">
+                ▼
+              </span>
+            </div>
+          )}
 
-              {/* Register / Sign In Toggle Link */}
-              <div className="pt-2 text-center">
+          {/* Username / Email Field */}
+          <div className="relative w-full">
+            <input
+              type="email"
+              required
+              placeholder="Username / Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/20 text-white placeholder-white/70 text-sm focus:outline-none focus:border-white focus:bg-black/30 transition-all pr-12"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-sm">
+              👤
+            </span>
+          </div>
+
+          {/* Password Field */}
+          <div className="relative w-full">
+            <input
+              type="password"
+              required
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/20 text-white placeholder-white/70 text-sm focus:outline-none focus:border-white focus:bg-black/30 transition-all pr-12"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-sm">
+              🔒
+            </span>
+          </div>
+
+          {/* Remember me & Forgot password Row */}
+          {!isRegisterMode && (
+            <div className="flex items-center justify-between text-xs text-white/90 px-2 pt-1 pb-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="rounded border-white/40 bg-black/30 text-white focus:ring-0 accent-white cursor-pointer"
+                />
+                <span>Remember me</span>
+              </label>
+              <a
+                href="#forgot-password"
+                onClick={(e) => {
+                  e.preventDefault();
+                  alert("Contact HIT ICT Helpdesk for credential recovery.");
+                }}
+                className="hover:underline text-white/90"
+              >
+                Forgot password?
+              </a>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-3.5 px-6 rounded-full bg-white hover:bg-white/90 text-gray-900 font-semibold text-base shadow-lg transition-all transform active:scale-95 disabled:opacity-70 cursor-pointer mt-2"
+          >
+            {isLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 rounded-full border-2 border-gray-900/30 border-t-gray-900 animate-spin" />
+                <span>Processing...</span>
+              </span>
+            ) : isRegisterMode ? (
+              "Register"
+            ) : (
+              "Login"
+            )}
+          </button>
+
+          {/* Toggle Register / Login */}
+          <div className="pt-4 text-center text-xs text-white/80">
+            {isRegisterMode ? (
+              <span>
+                Already have an account?{" "}
                 <button
                   type="button"
                   onClick={() => {
-                    setIsRegisterMode(!isRegisterMode);
+                    setIsRegisterMode(false);
                     setError("");
                     setSuccessMessage("");
                   }}
-                  className="text-xs font-mono text-hit-blue hover:underline cursor-pointer"
+                  className="font-bold text-white hover:underline cursor-pointer"
                 >
-                  {isRegisterMode
-                    ? "Already have an account? Sign in here."
-                    : "Need an account? Register here."}
+                  Login
                 </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Institutional Footer Notice */}
-          <div className="mt-10 pt-6 border-t border-hit-border/60 flex items-center justify-between text-xs text-hit-text-secondary font-mono">
-            <span>HIT ICT Services &copy; 2026</span>
-            <span>Secured Session</span>
-          </div>
-        </div>
-
-        {/* Right Column: Navy Institutional Panel (5 columns on desktop) */}
-        <div className="lg:col-span-5 bg-hit-blue p-8 sm:p-12 text-white flex flex-col justify-between relative overflow-hidden border-t lg:border-t-0 lg:border-l border-hit-blue-dark">
-          <div
-            className="absolute inset-0 opacity-5 pointer-events-none"
-            style={{
-              backgroundImage: `radial-gradient(#E8A33D 1px, transparent 1px)`,
-              backgroundSize: "24px 24px",
-            }}
-          />
-
-          <div className="relative z-10 space-y-8">
-            <HITRAGWordmark variant="light" className="hidden lg:flex" />
-
-            <div className="space-y-4 pt-4 lg:pt-12">
-              <span className="inline-block px-2.5 py-1 rounded bg-hit-blue-dark border border-white/10 font-mono text-[10px] text-hit-amber uppercase tracking-wider font-semibold">
-                Success Through Innovation
               </span>
-              <h2 className="font-display text-2xl sm:text-3xl font-bold text-white leading-tight">
-                Ask HITRAG anything about HIT policy.
-              </h2>
-              <p className="text-sm text-hit-border leading-relaxed font-body">
-                Grounded strictly in official Harare Institute of Technology regulations, academic handbooks, and administrative guidelines.
-              </p>
-            </div>
+            ) : (
+              <span>
+                Don&apos;t have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegisterMode(true);
+                    setError("");
+                    setSuccessMessage("");
+                  }}
+                  className="font-bold text-white hover:underline cursor-pointer"
+                >
+                  Register
+                </button>
+              </span>
+            )}
           </div>
-
-          {/* Trust Strip */}
-          <div className="relative z-10 pt-10 mt-8 border-t border-white/15 space-y-4">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-hit-amber font-semibold block">
-              Institutional Trust Guarantees
-            </span>
-            <ul className="space-y-3 font-mono text-xs text-hit-border">
-              <li className="flex items-start gap-2.5">
-                <span className="text-hit-amber font-bold shrink-0">[1]</span>
-                <span>Cites every answer with section-level document references.</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span className="text-hit-amber font-bold shrink-0">[2]</span>
-                <span>Respects your role access level (Student / Lecturer / Admin).</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <span className="text-hit-amber font-bold shrink-0">[3]</span>
-                <span>Built exclusively on HIT&apos;s official policy documents.</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-
+        </form>
       </div>
     </div>
   );
