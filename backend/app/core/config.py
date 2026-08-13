@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     PORT: int = 8000
     DATABASE_URL: str = "postgresql://user:password@localhost:5432/hitrag"
 
+    # JWT Authentication Security Settings
+    SECRET_KEY: str = "b271c8216463e1f056695d4db121f2b0eb979284d1f44aa834bc521fbbae9b80"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 Hours
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.api.v1.health import health_router
+from app.api.v1.auth import auth_router
 from app.core.config import settings
 
 def create_application() -> FastAPI:
@@ -13,6 +14,7 @@ def create_application() -> FastAPI:
 
     # Register API routers
     application.include_router(health_router)
+    application.include_router(auth_router)
 
     return application
 
