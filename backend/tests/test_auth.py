@@ -5,9 +5,11 @@ from app.main import app
 client = TestClient(app)
 
 def test_auth_full_flow():
+    import time
+    test_email = f"auth_test_{int(time.time())}@hit.ac.zw"
     # 1. Register User
     register_payload = {
-        "email": "auth_test_user@hit.ac.zw",
+        "email": test_email,
         "password": "SecurePassword123!",
         "full_name": "Auth Test Student",
         "role": "STUDENT"
@@ -16,12 +18,12 @@ def test_auth_full_flow():
     res_reg = client.post("/api/v1/auth/register", json=register_payload)
     assert res_reg.status_code == 201
     data_reg = res_reg.json()
-    assert data_reg["email"] == "auth_test_user@hit.ac.zw"
+    assert data_reg["email"] == test_email
     assert "hashed_password" not in data_reg
 
     # 2. Login User (OAuth2 Form Data)
     login_data = {
-        "username": "auth_test_user@hit.ac.zw",
+        "username": test_email,
         "password": "SecurePassword123!"
     }
     res_login = client.post("/api/v1/auth/login", data=login_data)
@@ -37,7 +39,7 @@ def test_auth_full_flow():
     res_me = client.get("/api/v1/auth/me", headers=headers)
     assert res_me.status_code == 200
     user_me = res_me.json()
-    assert user_me["email"] == "auth_test_user@hit.ac.zw"
+    assert user_me["email"] == test_email
     assert user_me["role"] == "STUDENT"
 
     # 4. Attempt /me with invalid token -> 401
