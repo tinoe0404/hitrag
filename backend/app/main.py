@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.health import health_router
 from app.api.v1.auth import auth_router
 from app.core.config import settings
@@ -10,6 +11,15 @@ def create_application() -> FastAPI:
         description="Institutional RAG Assistant API for Harare Institute of Technology",
         version="0.1.0",
         debug=settings.DEBUG,
+    )
+
+    # Configure CORS Middleware
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Register API routers

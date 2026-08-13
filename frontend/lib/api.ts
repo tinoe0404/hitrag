@@ -7,23 +7,154 @@ import {
 import { AccessTier } from "@/components/ui/citation-tag";
 import { UserProfile } from "@/components/chat/chat-sidebar";
 
-// Local storage session key simulation
-const SESSION_ROLE_KEY = "hitrag_mock_user_role";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const AUTH_TOKEN_KEY = "hitrag_access_token";
 
-export function getCurrentUserRole(): AccessTier {
-  if (typeof window !== "undefined") {
-    const saved = localStorage.getItem(SESSION_ROLE_KEY) as AccessTier;
-    if (saved && MOCK_USER_PROFILES[saved]) {
-      return saved;
-    }
+// Auth Data Structures matching Backend UserOut
+export interface BackendUser {
+  id: number;
+  email: string;
+  full_name: string;
+  role: "PUBLIC" | "STUDENT" | "LECTURER" | "ADMIN";
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  full_name: string;
+  role?: string;
+}
+
+// Convert Backend User Role Enum to UI AccessTier
+export function mapRoleToAccessTier(roleStr?: string): AccessTier {
+  switch (roleStr?.toUpperCase()) {
+    case "ADMIN":
+    case "STAFF / ADMIN":
+      return "Admin";
+    case "LECTURER":
+      return "Lecturer";
+    case "PUBLIC":
+      return "Public";
+    case "STUDENT":
+    default:
+      return "Student";
   }
+}
+
+// Store & Retrieve JWT token from localStorage
+export function getStoredToken(): string | null {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  }
+  return null;
+}
+
+export function setStoredToken(token: string): void {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  }
+}
+
+export function removeStoredToken(): void {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
+}
+
+// Real Backend Register API Call
+export async function registerUser(payload: RegisterPayload): Promise<BackendUser> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: payload.email,
+      password: payload.password,
+      full_name: payload.full_name,
+      role: payload.role || "STUDENT",
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Registration failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
+// Real Backend Login API Call (OAuth2 form-data)
+export async function loginUser(email: string, password: string): Promise<{ access_token: string; token_type: string }> {
+  const formData = new URLSearchParams();
+  formData.append("username", email);
+  formData.append("password", password);
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: formData.toString(),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Invalid email or password.");
+  }
+
+  const tokenData = await res.json();
+  setStoredToken(tokenData.access_token);
+  return tokenData;
+}
+
+// Real Backend Get Current User / Session Check Call (GET /api/v1/auth/me)
+export async function getCurrentUser(): Promise<BackendUser | null> {
+  const token = getStoredToken();
+  if (!token) return null;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      removeStoredToken();
+      return null;
+    }
+
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// Real Backend Stateless Logout Call
+export async function logoutUser(): Promise<void> {
+  const token = getStoredToken();
+  if (token) {
+    fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }).catch(() => {});
+  }
+  removeStoredToken();
+}
+
+// Compatibility helper functions for UI components
+export function getCurrentUserRole(): AccessTier {
   return "Student";
 }
 
 export function setCurrentUserRole(role: AccessTier): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(SESSION_ROLE_KEY, role);
-  }
+  // Legacy role switcher helper
 }
 
 export function getCurrentUserProfile(role?: AccessTier): UserProfile {
@@ -55,12 +186,9 @@ export async function sendMessage(
     timestamp,
   };
 
-  // Simulate network latency (800ms)
   await new Promise((resolve) => setTimeout(resolve, 800));
 
-  // Determine response based on query keywords or fallback
   const lowerQuery = userMessageText.toLowerCase();
-
   let assistantMessage: MockMessage;
 
   if (lowerQuery.includes("salary") || lowerQuery.includes("hr") || lowerQuery.includes("appraisal")) {

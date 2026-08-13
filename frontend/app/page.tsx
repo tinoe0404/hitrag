@@ -2,18 +2,21 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getCurrentUserRole } from "@/lib/api";
+import { getCurrentUser } from "@/lib/api";
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const role = getCurrentUserRole();
-    if (!role) {
-      router.replace("/login");
-    } else {
-      router.replace("/chat");
+    async function checkAuth() {
+      const user = await getCurrentUser();
+      if (!user) {
+        router.replace("/login");
+      } else {
+        router.replace("/chat");
+      }
     }
+    checkAuth();
   }, [router]);
 
   return (

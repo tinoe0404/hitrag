@@ -160,7 +160,21 @@ export function ChatSidebar({
               {userProfile.department} · {userProfile.title}
             </span>
           </div>
-          <TierPill tier={userProfile.role} className="shrink-0 scale-90" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <TierPill tier={userProfile.role} className="scale-90" />
+            <button
+              onClick={() => {
+                import("@/lib/api").then(({ logoutUser }) => {
+                  logoutUser();
+                  router.push("/login");
+                });
+              }}
+              className="text-[10px] font-mono text-hit-border hover:text-white bg-white/10 hover:bg-white/20 px-1.5 py-1 rounded transition-colors"
+              title="Logout session"
+            >
+              Exit
+            </button>
+          </div>
         </div>
       </aside>
     </>

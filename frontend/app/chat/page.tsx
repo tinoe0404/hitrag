@@ -35,9 +35,17 @@ export default function ChatPage() {
   const [isSending, setIsSending] = useState(false);
 
   // Sync role and active conversation messages
-  const loadConversationData = useCallback(() => {
-    const role = getCurrentUserRole();
-    setUserRole(role);
+  const loadConversationData = useCallback(async () => {
+    const { getCurrentUser, mapRoleToAccessTier } = await import("@/lib/api");
+    const activeUser = await getCurrentUser();
+
+    if (!activeUser) {
+      router.replace("/login");
+      return;
+    }
+
+    const tier = mapRoleToAccessTier(activeUser.role);
+    setUserRole(tier);
 
     if (activeConversationId) {
       const conv = getConversationById(activeConversationId);
@@ -49,7 +57,7 @@ export default function ChatPage() {
     } else {
       setMessages([]);
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, router]);
 
   useEffect(() => {
     loadConversationData();

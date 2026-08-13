@@ -3,30 +3,51 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { HITRAGWordmark } from "@/components/ui/hitrag-wordmark";
+import { loginUser, registerUser } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+
+  // Form State
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState("STUDENT");
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccessMessage("");
     setIsLoading(true);
 
     try {
-      // Simulate server-side auth & role resolution
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      
-      // Default hardcoded mock session role to "Student" as required
-      import("@/lib/api").then(({ setCurrentUserRole }) => {
-        setCurrentUserRole("Student");
+      if (isRegisterMode) {
+        // Step 1: Register User Call
+        await registerUser({
+          email,
+          password,
+          full_name: fullName,
+          role,
+        });
+
+        setSuccessMessage("Account created successfully! Logging you in...");
+        
+        // Step 2: Auto-login after registration
+        await loginUser(email, password);
         router.push("/chat");
-      });
-    } catch {
-      setError("Invalid credentials. Please check your HIT ID or password.");
+      } else {
+        // Real Login Call
+        await loginUser(email, password);
+        router.push("/chat");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Authentication failed. Please check your inputs.";
+      setError(msg);
       setIsLoading(false);
     }
   };
@@ -50,20 +71,71 @@ export default function LoginPage() {
             {/* Form Headline */}
             <div className="space-y-2 mb-8">
               <h1 className="font-display text-2xl sm:text-3xl font-bold text-hit-blue tracking-tight">
-                Sign in to your account
+                {isRegisterMode ? "Create an Account" : "Sign in to your account"}
               </h1>
               <p className="text-sm text-hit-text-secondary">
-                Enter your institutional credentials to access HITRAG policy intelligence.
+                {isRegisterMode
+                  ? "Register your credentials to access HITRAG policy intelligence."
+                  : "Enter your institutional credentials to access HITRAG policy intelligence."}
               </p>
             </div>
 
             {/* Auth Form */}
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="p-3.5 rounded-lg bg-hit-warning/10 border border-hit-warning/30 text-hit-warning text-xs font-medium flex items-center gap-2">
                   <span className="font-mono font-bold">[!]</span>
                   <span>{error}</span>
                 </div>
+              )}
+
+              {successMessage && (
+                <div className="p-3.5 rounded-lg bg-hit-success/10 border border-hit-success/30 text-hit-success text-xs font-medium flex items-center gap-2">
+                  <span className="font-mono font-bold">[✓]</span>
+                  <span>{successMessage}</span>
+                </div>
+              )}
+
+              {isRegisterMode && (
+                <>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="fullName"
+                      className="block text-xs font-mono font-semibold uppercase tracking-wider text-hit-text-primary"
+                    >
+                      Full Name
+                    </label>
+                    <input
+                      id="fullName"
+                      type="text"
+                      required
+                      placeholder="e.g. Tafadzwa Moyo"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-hit-border bg-hit-bg/50 text-hit-text-primary text-sm placeholder:text-hit-text-secondary/60 focus:bg-hit-surface focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="role"
+                      className="block text-xs font-mono font-semibold uppercase tracking-wider text-hit-text-primary"
+                    >
+                      Institutional Role
+                    </label>
+                    <select
+                      id="role"
+                      value={role}
+                      onChange={(e) => setRole(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-hit-border bg-hit-bg/50 text-hit-text-primary text-sm focus:bg-hit-surface focus:outline-none transition-colors font-mono"
+                    >
+                      <option value="STUDENT">Student</option>
+                      <option value="LECTURER">Lecturer / Staff</option>
+                      <option value="ADMIN">Administrator</option>
+                      <option value="PUBLIC">Public</option>
+                    </select>
+                  </div>
+                </>
               )}
 
               <div className="space-y-1.5">
@@ -92,16 +164,18 @@ export default function LoginPage() {
                   >
                     Password
                   </label>
-                  <a
-                    href="#forgot-password"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      alert("Contact HIT ICT Helpdesk for credential recovery.");
-                    }}
-                    className="text-xs font-mono text-hit-blue hover:underline"
-                  >
-                    Forgot password?
-                  </a>
+                  {!isRegisterMode && (
+                    <a
+                      href="#forgot-password"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        alert("Contact HIT ICT Helpdesk for credential recovery.");
+                      }}
+                      className="text-xs font-mono text-hit-blue hover:underline"
+                    >
+                      Forgot password?
+                    </a>
+                  )}
                 </div>
                 <input
                   id="password"
@@ -114,7 +188,7 @@ export default function LoginPage() {
                 />
               </div>
 
-              {/* Single CTA Button */}
+              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={isLoading}
@@ -123,15 +197,32 @@ export default function LoginPage() {
                 {isLoading ? (
                   <>
                     <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    <span>Authenticating HIT Session...</span>
+                    <span>{isRegisterMode ? "Registering Account..." : "Authenticating HIT Session..."}</span>
                   </>
                 ) : (
                   <>
-                    <span>Sign In to HITRAG</span>
+                    <span>{isRegisterMode ? "Register Account" : "Sign In to HITRAG"}</span>
                     <span className="font-mono text-hit-amber">→</span>
                   </>
                 )}
               </button>
+
+              {/* Register / Sign In Toggle Link */}
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegisterMode(!isRegisterMode);
+                    setError("");
+                    setSuccessMessage("");
+                  }}
+                  className="text-xs font-mono text-hit-blue hover:underline cursor-pointer"
+                >
+                  {isRegisterMode
+                    ? "Already have an account? Sign in here."
+                    : "Need an account? Register here."}
+                </button>
+              </div>
             </form>
           </div>
 
@@ -144,7 +235,6 @@ export default function LoginPage() {
 
         {/* Right Column: Navy Institutional Panel (5 columns on desktop) */}
         <div className="lg:col-span-5 bg-hit-blue p-8 sm:p-12 text-white flex flex-col justify-between relative overflow-hidden border-t lg:border-t-0 lg:border-l border-hit-blue-dark">
-          {/* Background Structural Grid Decor */}
           <div
             className="absolute inset-0 opacity-5 pointer-events-none"
             style={{
