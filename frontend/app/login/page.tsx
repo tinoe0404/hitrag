@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { HITRAGWordmark } from "@/components/ui/hitrag-wordmark";
 import { loginUser, registerUser } from "@/lib/api";
 
 export default function LoginPage() {
@@ -34,7 +35,7 @@ export default function LoginPage() {
           role,
         });
 
-        setSuccessMessage("Account created! Logging in...");
+        setSuccessMessage("Account created successfully! Redirecting...");
         await loginUser(email, password);
         router.push("/chat");
       } else {
@@ -49,115 +50,175 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#0d131a] flex items-center justify-center p-4 relative font-sans select-none overflow-hidden">
-      {/* Brick Wall Background Container */}
+    <div className="min-h-screen w-full bg-[#070C14] flex items-center justify-center p-4 sm:p-6 relative font-body select-none overflow-hidden">
+      
+      {/* Background 1: Soft Dynamic Gradient Mesh */}
       <div 
-        className="absolute inset-0 bg-cover bg-center opacity-40 mix-blend-luminosity filter blur-[1px]"
-        style={{ backgroundImage: `url('/brick-bg.png')` }}
+        className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(11,46,92,0.6),rgba(7,12,20,1))]"
       />
 
-      {/* Simulated Wall Light Fixture Glow Effect */}
-      <div className="absolute top-[8%] left-1/2 -translate-x-1/2 w-72 h-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-100/40 via-amber-300/10 to-transparent rounded-full blur-2xl pointer-events-none" />
+      {/* Background 2: Glowing Amber Brand Accent Sphere */}
+      <div 
+        className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[350px] bg-hit-amber/15 rounded-full blur-[140px] pointer-events-none"
+      />
 
-      {/* Glassmorphic Auth Card */}
-      <div className="relative z-10 w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 sm:p-10 shadow-2xl shadow-black/80 flex flex-col items-center">
+      {/* Background 3: Low-opacity Geometric Grid Pattern */}
+      <div 
+        className="absolute inset-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage: `radial-gradient(#E8A33D 1px, transparent 1px)`,
+          backgroundSize: "32px 32px",
+        }}
+      />
+
+      {/* Branded Premium Glassmorphic Card (Soft 20px corners, subtle inner glow & border) */}
+      <div className="relative z-10 w-full max-w-[440px] bg-[#0E1726]/75 backdrop-blur-2xl border border-white/10 rounded-2xl p-8 sm:p-10 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8),0_0_40px_rgba(232,163,61,0.06)] flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
         
-        {/* Title */}
-        <h1 className="text-3xl font-bold text-white tracking-wide mb-8 text-center drop-shadow">
-          {isRegisterMode ? "Register" : "Login"}
-        </h1>
+        {/* Branding: Official HITRAG Wordmark */}
+        <div className="mb-6 scale-105">
+          <HITRAGWordmark variant="light" />
+        </div>
+
+        {/* Dynamic Heading */}
+        <div className="text-center mb-7 space-y-1">
+          <h1 className="font-display text-2xl font-extrabold text-white tracking-tight">
+            {isRegisterMode ? "Create an Account" : "Sign in to HITRAG"}
+          </h1>
+          <p className="text-xs text-hit-border/80">
+            {isRegisterMode
+              ? "Register your institutional credentials to get started"
+              : "Enter your institutional credentials to access policy intelligence"}
+          </p>
+        </div>
 
         {/* Error / Success Alerts */}
         {error && (
-          <div className="w-full mb-4 p-3 rounded-xl bg-red-500/20 border border-red-400/40 text-red-200 text-xs font-medium text-center backdrop-blur-md">
-            {error}
+          <div className="w-full mb-5 p-3 rounded-xl bg-hit-warning/15 border border-hit-warning/30 text-hit-warning text-xs font-medium flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2">
+            <span className="font-mono font-bold text-sm shrink-0">[!]</span>
+            <span>{error}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="w-full mb-4 p-3 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-medium text-center backdrop-blur-md">
-            {successMessage}
+          <div className="w-full mb-5 p-3 rounded-xl bg-hit-success/15 border border-hit-success/30 text-hit-success text-xs font-medium flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2">
+            <span className="font-mono font-bold text-sm shrink-0">[✓]</span>
+            <span>{successMessage}</span>
           </div>
         )}
 
-        {/* Auth Form */}
+        {/* Form Container */}
         <form onSubmit={handleSubmit} className="w-full space-y-4">
           
-          {/* Full Name Field (Register Mode Only) */}
+          {/* Full Name (Register Mode Only) */}
           {isRegisterMode && (
-            <div className="relative w-full">
-              <input
-                type="text"
-                required
-                placeholder="Full Name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/20 text-white placeholder-white/70 text-sm focus:outline-none focus:border-white focus:bg-black/30 transition-all pr-12"
-              />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-sm">
-                👤
-              </span>
+            <div className="space-y-1">
+              <label className="block text-[11px] font-mono font-semibold uppercase tracking-wider text-hit-border/90">
+                Full Name
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Tafadzwa Moyo"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-[#071325]/60 text-white placeholder-hit-border/40 text-sm focus:outline-none focus:border-hit-amber focus:ring-1 focus:ring-hit-amber/50 transition-all pl-10"
+                />
+                <svg
+                  className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-hit-amber/70"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
             </div>
           )}
 
           {/* Role Select (Register Mode Only) */}
           {isRegisterMode && (
-            <div className="relative w-full">
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/40 text-white text-sm focus:outline-none focus:border-white transition-all appearance-none cursor-pointer"
-              >
-                <option value="STUDENT" className="bg-gray-900 text-white">Student</option>
-                <option value="LECTURER" className="bg-gray-900 text-white">Lecturer / Staff</option>
-                <option value="ADMIN" className="bg-gray-900 text-white">Administrator</option>
-                <option value="PUBLIC" className="bg-gray-900 text-white">Public</option>
-              </select>
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-xs pointer-events-none">
-                ▼
-              </span>
+            <div className="space-y-1">
+              <label className="block text-[11px] font-mono font-semibold uppercase tracking-wider text-hit-border/90">
+                Institutional Role
+              </label>
+              <div className="relative">
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-[#071325]/90 text-white text-sm focus:outline-none focus:border-hit-amber focus:ring-1 focus:ring-hit-amber/50 transition-all appearance-none cursor-pointer font-mono"
+                >
+                  <option value="STUDENT" className="bg-[#0E1726] text-white">Student</option>
+                  <option value="LECTURER" className="bg-[#0E1726] text-white">Lecturer / Academic Staff</option>
+                  <option value="ADMIN" className="bg-[#0E1726] text-white">Administrator</option>
+                  <option value="PUBLIC" className="bg-[#0E1726] text-white">Public Access</option>
+                </select>
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-hit-amber/70 text-xs pointer-events-none">
+                  ▼
+                </span>
+              </div>
             </div>
           )}
 
-          {/* Username / Email Field */}
-          <div className="relative w-full">
-            <input
-              type="email"
-              required
-              placeholder="Username / Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/20 text-white placeholder-white/70 text-sm focus:outline-none focus:border-white focus:bg-black/30 transition-all pr-12"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-sm">
-              👤
-            </span>
+          {/* Email Input */}
+          <div className="space-y-1">
+            <label className="block text-[11px] font-mono font-semibold uppercase tracking-wider text-hit-border/90">
+              Institutional Email / Username
+            </label>
+            <div className="relative">
+              <input
+                type="email"
+                required
+                placeholder="e.g. h220104s@hit.ac.zw"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-white/10 bg-[#071325]/60 text-white placeholder-hit-border/40 text-sm focus:outline-none focus:border-hit-amber focus:ring-1 focus:ring-hit-amber/50 transition-all pl-10"
+              />
+              <svg
+                className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-hit-amber/70"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
           </div>
 
-          {/* Password Field */}
-          <div className="relative w-full">
-            <input
-              type="password"
-              required
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-5 py-3.5 rounded-full border border-white/30 bg-black/20 text-white placeholder-white/70 text-sm focus:outline-none focus:border-white focus:bg-black/30 transition-all pr-12"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 text-sm">
-              🔒
-            </span>
+          {/* Password Input */}
+          <div className="space-y-1">
+            <label className="block text-[11px] font-mono font-semibold uppercase tracking-wider text-hit-border/90">
+              Password
+            </label>
+            <div className="relative">
+              <input
+                type="password"
+                required
+                placeholder="••••••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-white/10 bg-[#071325]/60 text-white placeholder-hit-border/40 text-sm focus:outline-none focus:border-hit-amber focus:ring-1 focus:ring-hit-amber/50 transition-all pl-10"
+              />
+              <svg
+                className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-hit-amber/70"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
           </div>
 
-          {/* Remember me & Forgot password Row */}
+          {/* Remember me & Forgot Password Row */}
           {!isRegisterMode && (
-            <div className="flex items-center justify-between text-xs text-white/90 px-2 pt-1 pb-2">
+            <div className="flex items-center justify-between text-xs text-hit-border pt-1 pb-1">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded border-white/40 bg-black/30 text-white focus:ring-0 accent-white cursor-pointer"
+                  className="rounded border-white/20 bg-[#071325] text-hit-amber focus:ring-0 accent-hit-amber cursor-pointer"
                 />
                 <span>Remember me</span>
               </label>
@@ -167,33 +228,39 @@ export default function LoginPage() {
                   e.preventDefault();
                   alert("Contact HIT ICT Helpdesk for credential recovery.");
                 }}
-                className="hover:underline text-white/90"
+                className="text-hit-amber hover:underline font-medium transition-colors"
               >
                 Forgot password?
               </a>
             </div>
           )}
 
-          {/* Submit Button */}
+          {/* Accent Branded Button */}
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 px-6 rounded-full bg-white hover:bg-white/90 text-gray-900 font-semibold text-base shadow-lg transition-all transform active:scale-95 disabled:opacity-70 cursor-pointer mt-2"
+            className="w-full py-3.5 px-6 rounded-xl bg-hit-amber hover:bg-hit-amber/90 active:scale-[0.99] text-[#070C14] font-display font-bold text-sm tracking-wide shadow-lg shadow-hit-amber/15 hover:shadow-hit-amber/25 transition-all duration-200 cursor-pointer mt-3 flex items-center justify-center gap-2 disabled:opacity-60"
           >
             {isLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 rounded-full border-2 border-gray-900/30 border-t-gray-900 animate-spin" />
-                <span>Processing...</span>
-              </span>
+              <>
+                <span className="w-4 h-4 rounded-full border-2 border-[#070C14]/30 border-t-[#070C14] animate-spin" />
+                <span>Authenticating...</span>
+              </>
             ) : isRegisterMode ? (
-              "Register"
+              <>
+                <span>Register Account</span>
+                <span className="font-mono">→</span>
+              </>
             ) : (
-              "Login"
+              <>
+                <span>Sign In to HITRAG</span>
+                <span className="font-mono">→</span>
+              </>
             )}
           </button>
 
-          {/* Toggle Register / Login */}
-          <div className="pt-4 text-center text-xs text-white/80">
+          {/* Mode Switcher */}
+          <div className="pt-4 text-center text-xs text-hit-border">
             {isRegisterMode ? (
               <span>
                 Already have an account?{" "}
@@ -204,9 +271,9 @@ export default function LoginPage() {
                     setError("");
                     setSuccessMessage("");
                   }}
-                  className="font-bold text-white hover:underline cursor-pointer"
+                  className="font-bold text-hit-amber hover:underline cursor-pointer ml-1"
                 >
-                  Login
+                  Sign in here
                 </button>
               </span>
             ) : (
@@ -219,14 +286,19 @@ export default function LoginPage() {
                     setError("");
                     setSuccessMessage("");
                   }}
-                  className="font-bold text-white hover:underline cursor-pointer"
+                  className="font-bold text-hit-amber hover:underline cursor-pointer ml-1"
                 >
-                  Register
+                  Register here
                 </button>
               </span>
             )}
           </div>
         </form>
+      </div>
+
+      {/* Micro Institutional Footer */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-center text-[10px] font-mono text-hit-border/50">
+        HIT ICT Services &copy; 2026 &bull; Secured Institutional Identity Provider
       </div>
     </div>
   );
