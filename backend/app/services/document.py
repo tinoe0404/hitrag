@@ -94,7 +94,7 @@ def extract_document(db: Session, document_id: int) -> ExtractionResult:
       (it gets consumed and replaced by cleaned chunks in later phases).
 
     On success: Document.status -> EXTRACTED, returns ExtractionResult.
-    On failure: Document.status -> EXTRACTION_FAILED, raises HTTPException.
+    On failure: Document.status -> EXT_FAILED, raises HTTPException.
     """
     doc = repo.get_document_by_id(db, document_id)
     if not doc:
@@ -110,7 +110,7 @@ def extract_document(db: Session, document_id: int) -> ExtractionResult:
     try:
         result = extract_pages(doc.storage_path)
     except ExtractionError as e:
-        doc.status = DocumentStatus.EXTRACTION_FAILED
+        doc.status = DocumentStatus.EXT_FAILED
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
