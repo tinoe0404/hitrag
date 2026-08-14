@@ -1,4 +1,6 @@
 from typing import List
+import json
+import os
 from fastapi import UploadFile, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -6,6 +8,7 @@ from app.models.document import Document
 from app.models.enums import UserRole, DocumentStatus
 from app.models.user import User
 from app.core.files import save_upload, delete_upload_file
+from app.rag.extraction import extract_pages, ExtractionResult, ExtractionError
 import app.repositories.document as repo
 
 def service_upload_document(
@@ -75,3 +78,62 @@ def service_delete_document(db: Session, document_id: int, allowed_tiers: List[U
     
     # Delete DB record
     repo.delete_document_record(db, doc)
+
+
+def extract_document(db: Session, document_id: int) -> ExtractionResult:
+    """
+    Trigger text extraction for a stored document.
+
+    Design decision — extracted text storage:
+    The extracted per-page JSON is written to a .json file alongside the original PDF
+    under uploads/ (e.g. abc123.pdf -> abc123.extracted.json). This approach:
+    - Keeps the DB lean (no large TEXT blobs in rows).
+    - Gives Phase 9 (cleaning) and Phase 10 (chunking) a simple file path to read from.
+    - Is easy to inspect/debug by eyeballing the JSON on disk.
+    - Avoids needing a new DB table just for raw extraction output that is transient
+      (it gets consumed and replaced by cleaned chunks in later phases).
+
+    On success: Document.status -> EXTRACTED, returns ExtractionResult.
+    On failure: Document.status -> EXTRACTION_FAILED, raises HTTPException.
+    """
+    doc = repo.get_document_by_id(db, document_id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    # Update status to PROCESSING
+    doc.status = DocumentStatus.PROCESSING
+    db.commit()
+
+    try:
+        result = extract_pages(doc.storage_path)
+    except ExtractionError as e:
+        doc.status = DocumentStatus.EXTRACTION_FAILED
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Extraction failed for document {document_id}: {str(e)}"
+        )
+
+    # Write extracted JSON alongside the PDF
+    json_path = doc.storage_path.rsplit(".", 1)[0] + ".extracted.json"
+    extraction_data = {
+        "document_id": doc.id,
+        "total_pages": result.total_pages,
+        "pages_with_text": result.pages_with_text,
+        "pages_without_text": result.pages_without_text,
+        "extraction_status": result.extraction_status,
+        "pages": result.to_dict_list(),
+    }
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(extraction_data, f, ensure_ascii=False, indent=2)
+
+    # Update document status
+    doc.status = DocumentStatus.EXTRACTED
+    db.commit()
+    db.refresh(doc)
+
+    return result
+
