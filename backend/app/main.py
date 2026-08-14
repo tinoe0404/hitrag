@@ -4,6 +4,7 @@ from app.api.v1.health import health_router
 from app.api.v1.auth import auth_router
 from app.api.v1.debug import debug_router
 from app.api.v1.conversations import conversations_router
+from app.api.v1.documents import documents_router
 from app.core.config import settings
 
 def create_application() -> FastAPI:
@@ -29,6 +30,7 @@ def create_application() -> FastAPI:
     application.include_router(auth_router)
     application.include_router(debug_router)
     application.include_router(conversations_router)
+    application.include_router(documents_router)
 
     return application
 
