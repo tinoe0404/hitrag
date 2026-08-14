@@ -117,6 +117,13 @@ def extract_document(db: Session, document_id: int) -> ExtractionResult:
             detail=f"Extraction failed for document {document_id}: {str(e)}"
         )
 
+    # Clean the extracted pages in-place
+    from app.rag.cleaning import clean_pages
+    cleaned_dicts = clean_pages(result.to_dict_list())
+    for idx, p_dict in enumerate(cleaned_dicts):
+        result.pages[idx].text = p_dict["text"]
+        result.pages[idx].has_text = p_dict["has_text"]
+
     # Write extracted JSON alongside the PDF
     json_path = doc.storage_path.rsplit(".", 1)[0] + ".extracted.json"
     extraction_data = {
