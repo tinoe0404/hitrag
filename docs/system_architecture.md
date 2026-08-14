@@ -220,7 +220,74 @@ Custom tokens configured in `frontend/tailwind.config.ts`:
 
 ---
 
-## 6. Verification & Testing
+## 6. Role-Based Access Control & Tier Mapping (Phase 5)
+
+### RBAC Hierarchy & Document Tiers
+To ensure strict security of institutional files, users are mapped to document access tiers according to their role hierarchy:
+- **`PUBLIC`**: Can only view documents assigned to the `PUBLIC` tier.
+- **`STUDENT`**: Can view `PUBLIC` + `STUDENT` tier documents.
+- **`LECTURER`**: Can view `PUBLIC` + `STUDENT` + `LECTURER` tier documents.
+- **`ADMIN`**: Can view all tiers, including `ADMIN`-only documents.
+
+### Key Architectural Decisions — RBAC
+1. **HTTP 403 Forbidden vs. HTTP 401 Unauthorized**:
+   - *Decision*: When a user with an active token requests a route protected by a role they do not possess, the dependency factory `require_role()` raises an `HTTP 403 Forbidden` response.
+   - *Rationale*: Differentiates between authenticating who a user is (unauthenticated gets a `401`) versus checking what they are allowed to do (unauthorized gets a `403`).
+2. **Decoupled Allowed Tier Resolver (`get_allowed_tiers`)**:
+   - *Decision*: Created a dependency helper that maps the user's role to a list of allowed tiers.
+   - *Rationale*: Keeps retrieval logic (Phase 15+) clean and independent. The retrieval engine only needs to filter database chunks by this tier list, completely agnostic of user roles or tenancy checking.
+
+---
+
+## 7. Conversation APIs & Tenant Isolation (Phase 6)
+
+### Key Architectural Decisions — Conversations
+1. **Multi-Tenant Ownership Verification**:
+   - *Decision*: Every request to view, append messages to, or delete a conversation checks ownership in the service layer (`get_user_conversation_or_404`). If the conversation does not belong to the user, the server returns an `HTTP 404 Not Found` error.
+   - *Rationale*: Prevents leaking the existence of resources across tenancy boundaries. If the server returned `403 Forbidden` for other users' IDs, an attacker could iterate IDs to list valid conversation sessions.
+2. **Plain-Text Handoff**:
+   - *Decision*: For Phase 6, both `user` and `assistant` messages are submitted by the client as plain text payloads. No automatic generation occurs server-side.
+   - *Rationale*: Ensures routing, authorization, and basic message schema serialization are stable before introducing retrieval pipelines and LLM integrations.
+
+---
+
+## 8. Document Management & File Storage Infrastructure (Phase 7)
+
+### Key Architectural Decisions — Document Uploads
+1. **Strict Tri-Fold PDF Validation**:
+   - *Decision*: Uploaded files are validated on:
+     1. Case-insensitive extension check (`.pdf`).
+     2. Content-type header verification (`application/pdf`).
+     3. Magic byte checking (reads the first file chunk to verify it starts with `%PDF-`).
+   - *Rationale*: Prevents executable shell scripts or HTML files with malicious javascript from being uploaded and served from the server by simply renaming their extensions.
+2. **Zero-Memory Streaming File Size Enforcer**:
+   - *Decision*: Read file chunks sequentially (1MB buffer) and sum the bytes. If the file exceeds 20MB, raise an `HTTP 413 Content Too Large` error and delete the partially written disk file.
+   - *Rationale*: Prevents Denial of Service (DoS) attacks that upload massive files to exhaust server RAM or disk space.
+3. **Tenancy and Tier Escalation Guards**:
+   - *Decision*: Enforces that users with roles `STUDENT` or `PUBLIC` cannot upload documents set to `LECTURER` or `ADMIN` tiers.
+   - *Rationale*: Restricts tier provisioning logic strictly to staff roles.
+4. **Collision-Safe File System Naming**:
+   - *Decision*: Saves files with a generated `uuid4.hex` name on disk under `uploads/`, while preserving the original name in the DB metadata.
+   - *Rationale*: Avoids file name collisions and prevents directory traversal attacks using special characters in filenames.
+
+---
+
+## 9. PDF Text Extraction & Storage Strategy (Phase 8)
+
+### Key Architectural Decisions — Text Extraction
+1. **PyMuPDF Library Choice**:
+   - *Decision*: Selected `PyMuPDF` (`fitz`) for PDF text extraction.
+   - *Rationale*: Superior performance (5–10x faster execution) and superior multi-column reading order reconstruction compared to pure Python alternatives like `pypdf`. Provides table detection and image extraction properties.
+2. **Out-of-DB Extracted Text Storage (`.extracted.json`)**:
+   - *Decision*: Extracted text is saved as a structured JSON file containing page numbers and text blocks alongside the PDF in the `uploads/` directory, rather than storing massive raw text blocks in the relational database.
+   - *Rationale*: Keeps database queries and backups fast and lightweight. Raw text is transient and is only required until Phase 9/10 transforms it into cleaned chunks.
+3. **PostgreSQL Enum Length Constraint Safeguard**:
+   - *Decision*: Mapped the extraction failure status to `EXT_FAILED` in the `DocumentStatus` enum.
+   - *Rationale*: PostgreSQL native enum values configured as `native_enum=False` create a `VARCHAR(10)` column based on the longest initial member (`PROCESSING`, 10 chars). `EXT_FAILED` fits perfectly within 10 characters, avoiding column truncation errors without requiring complex database schema alterations.
+
+---
+
+## 10. Verification & Testing
 
 Both frontend and backend services include automated verification suites:
 
@@ -228,6 +295,10 @@ Both frontend and backend services include automated verification suites:
   - `test_health.py`: Validates `GET /health` DB connectivity logic and error handling.
   - `test_models.py`: Validates model creation, relationship querying, and cascade deletion.
   - `test_auth.py`: Validates user registration, OAuth2 password authentication, JWT token issuance, and protected `/me` endpoints.
-  - `scripts/seed_check.py`: Smoke test inserting and reading models.
+  - `test_rbac.py`: Validates role-protected endpoints and allowed tier lists per role.
+  - `test_conversations.py`: Validates conversation creation, deletion cascades, and multi-tenant isolation.
+  - `test_documents.py`: Validates PDF uploads, tri-fold validation, size limits, and access guards.
+  - `test_extraction.py`: Validates multi-page parsing, blank page detection, and corruption error handling.
+  - `scripts/seed_check.py` & `scripts/extract_check.py`: Developer smoke test scripts.
 - **Frontend Build Verification**:
   - `npm run build`: Compiles static pages, dynamic chunk traces, and TypeScript definitions cleanly.
