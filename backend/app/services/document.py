@@ -137,8 +137,13 @@ def extract_document(db: Session, document_id: int) -> ExtractionResult:
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(extraction_data, f, ensure_ascii=False, indent=2)
 
-    # Update document status
-    doc.status = DocumentStatus.EXTRACTED
+    # Chunk the cleaned text pages (Phase 10)
+    from app.rag.chunking import chunk_pages
+    chunks = chunk_pages(result.to_dict_list(), doc.id)
+    repo.bulk_insert_chunks(db, doc.id, chunks)
+
+    # Update document status to CHUNKED
+    doc.status = DocumentStatus.CHUNKED
     db.commit()
     db.refresh(doc)
 

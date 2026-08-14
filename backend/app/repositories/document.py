@@ -45,3 +45,29 @@ def delete_document_record(db: Session, doc: Document) -> None:
     """Delete a document record from PostgreSQL (cascading related chunks)."""
     db.delete(doc)
     db.commit()
+
+def bulk_insert_chunks(db: Session, document_id: int, chunks: List[dict]) -> None:
+    """
+    Bulk insert chunk records for a document.
+    Deletes any existing chunks for this document first to prevent duplicate entries on re-run.
+    """
+    from app.models.chunk import Chunk
+    from sqlalchemy import delete
+
+    # Delete existing chunks for this document
+    db.execute(delete(Chunk).where(Chunk.document_id == document_id))
+    
+    # Bulk insert new chunks
+    db.bulk_insert_mappings(
+        Chunk,
+        [
+            {
+                "document_id": document_id,
+                "chunk_index": c["chunk_index"],
+                "page_number": c["page_number"],
+                "content": c["content"],
+            }
+            for c in chunks
+        ]
+    )
+    db.commit()

@@ -44,12 +44,15 @@ def debug_extract_document(
     The real ingestion pipeline endpoint is built at Phase 13.
     """
     result = extract_document(db, document_id)
+    from app.models.chunk import Chunk
+    chunks_count = db.query(Chunk).filter(Chunk.document_id == document_id).count()
     return {
         "document_id": document_id,
         "total_pages": result.total_pages,
         "pages_with_text": result.pages_with_text,
         "pages_without_text": result.pages_without_text,
         "extraction_status": result.extraction_status,
+        "chunks_count": chunks_count,
         "pages_preview": [
             {
                 "page_number": p.page_number,

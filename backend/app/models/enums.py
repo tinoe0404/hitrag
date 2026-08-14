@@ -11,6 +11,7 @@ class DocumentStatus(str, enum.Enum):
     PROCESSING = "PROCESSING"
     EXTRACTED = "EXTRACTED"
     EXT_FAILED = "EXT_FAILED"
+    CHUNKED = "CHUNKED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
