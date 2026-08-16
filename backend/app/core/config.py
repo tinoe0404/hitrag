@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -12,6 +13,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "b271c8216463e1f056695d4db121f2b0eb979284d1f44aa834bc521fbbae9b80"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 Hours
+
+    # Gemini API Settings (Phase 11 — Embeddings)
+    GEMINI_API_KEY: Optional[str] = None
+
     # CORS Allowed Origins
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:3000",

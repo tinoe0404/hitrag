@@ -12,6 +12,8 @@ class DocumentStatus(str, enum.Enum):
     EXTRACTED = "EXTRACTED"
     EXT_FAILED = "EXT_FAILED"
     CHUNKED = "CHUNKED"
+    EMB_READY = "EMB_READY"
+    EMBEDDED = "EMBEDDED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 

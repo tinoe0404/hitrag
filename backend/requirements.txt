@@ -13,3 +13,8 @@ python-multipart>=0.0.9,<1.0.0
 pytest>=8.0.0,<9.0.0
 httpx>=0.27.0,<1.0.0
 pymupdf>=1.24.0,<2.0.0
+# google-genai: Unified Google Gen AI SDK for Gemini embedding & generation APIs.
+# NOT the deprecated 'google-generativeai' package.
+google-genai>=1.0.0,<2.0.0
+# pgvector: Python support (including SQLAlchemy vector type mapping) for pgvector extension
+pgvector>=0.3.0,<0.4.0

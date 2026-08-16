@@ -287,7 +287,76 @@ To ensure strict security of institutional files, users are mapped to document a
 
 ---
 
-## 10. Verification & Testing
+## 10. Document Cleaning & Formatting (Phase 9)
+
+### Key Architectural Decisions — Cleaning
+1. **Pure Function Separation (`app/rag/cleaning.py`)**:
+   - *Decision*: Structured `clean_pages` as a pure input-output function operating on standard Python dictionary formats without database connections or dependencies.
+   - *Rationale*: Maximizes code testability in isolation and makes formatting rules easy to unit test.
+2. **Standardized Text Normalization Rules**:
+   - *Whitespace collapse*: Multi-spaces/tabs are collapsed to single spaces; 3+ consecutive newlines are collapsed to exactly 2 to preserve paragraph breaks while cleaning vertical noise.
+   - *De-hyphenation*: Uses a curated dictionary of common prefixes/suffixes to stitch together words split across lines by hyphens.
+   - *Footer/Header stripping*: Removes headers/footers based on page numbers, document titles, or common repeating layouts without touching central body text.
+
+---
+
+## 11. Paragraph-Based Chunking & Persistence (Phase 10)
+
+### Key Architectural Decisions — Chunking
+1. **Paragraph-Boundary Splits**:
+   - *Decision*: Chunks are split on paragraph boundaries (`\n\n`) rather than fixed character counts. If a single paragraph is too large (exceeding 1500 characters), it is split along sentence boundaries using a regex tokenizer.
+   - *Rationale*: Preserves semantic coherence within each chunk.
+2. **Page-Number Preservation**:
+   - *Decision*: Every chunk stores the exact page number it originated from in the `page_number` column.
+   - *Rationale*: Essential for grounding and accurate source attribution/citation on the frontend.
+3. **Idempotent Re-Chunking (Delete-then-Insert)**:
+   - *Decision*: Re-running the ingestion pipeline on a document deletes all existing `Chunk` rows for that document before inserting new ones.
+   - *Rationale*: Guarantees a clean document state without duplicates, keeping indexes sequential and database sizes optimized.
+
+---
+
+## 12. Gemini Text Embeddings (Phase 11)
+
+### Key Architectural Decisions — Embeddings
+1. **google-genai Unified SDK**:
+   - *Decision*: Leveraged the modern `google-genai` SDK rather than the deprecated `google-generativeai` package.
+   - *Rationale*: Aligns with Google's current API standards and guarantees support for long-term API evolution.
+2. **Model Selection & Dimensionality**:
+   - *Decision*: Used `gemini-embedding-001` with `output_dimensionality=768` via `EmbedContentConfig`. The model's native output is 3072 dimensions, but we explicitly truncate to 768 using Matryoshka Representation Learning (MRL) support.
+   - *Rationale*: 768 dimensions provides an excellent balance of semantic quality vs. storage/index cost. The explicit config prevents silent dimension mismatches between the embedding API and the database vector column.
+3. **API Batching (Max 100)**:
+   - *Decision*: Grouped text chunks into batches of 100 for API requests using Gemini's batch capabilities.
+   - *Rationale*: Minimizes network latency and API round-trip times.
+4. **Exponential Backoff Retry**:
+   - *Decision*: Implemented retries with exponential backoff specifically targeting rate limits (HTTP 429) and transient network errors.
+   - *Rationale*: Ensures resilience under heavy ingestion loads.
+
+---
+
+## 13. pgvector & Embedding Persistence (Phase 12)
+
+### Key Architectural Decisions — Vector Storage & Indexing
+1. **pgvector Extension (v0.8.6)**:
+   - *Decision*: Installed `pgvector` via Homebrew (`brew install pgvector`) for PostgreSQL 18.3 and enabled via `CREATE EXTENSION IF NOT EXISTS vector;` in the Alembic migration.
+   - *Rationale*: pgvector is the standard PostgreSQL extension for vector similarity search, providing native `VECTOR(N)` column types and distance operators without requiring an external vector database.
+2. **Embedding Column on Chunks Table**:
+   - *Decision*: Added `embedding VECTOR(768)` as a nullable column on the `chunks` table via Alembic migration `bcb2de06f8b8`.
+   - *Rationale*: 768 dimensions matches the exact output of `gemini-embedding-001` with our configured `output_dimensionality`. Nullable allows chunks to exist before embeddings are generated (e.g., during the chunking phase).
+3. **HNSW Index with Cosine Distance**:
+   - *Decision*: Created an HNSW (Hierarchical Navigable Small World) index on the `embedding` column using `vector_cosine_ops` as the distance operator class.
+   - *Rationale*:
+     - **HNSW vs IVFFlat**: HNSW provides better recall at query time with no need to pre-train clusters (IVFFlat requires `CREATE INDEX` with training data). pgvector 0.5.0+ supports HNSW; our v0.8.6 fully supports it.
+     - **Cosine distance**: Gemini's text embeddings are designed for cosine similarity comparison. The `<=>` operator (cosine distance) is the standard choice for semantic text search.
+4. **`embed_document_chunks()` Service Function**:
+   - *Decision*: Implemented in `app/rag/embeddings.py` to fetch all `Chunk` rows for a document, batch-embed their text via `embed_texts()`, write vectors back to each row's `embedding` column, and update `Document.status` to `EMBEDDED`.
+   - *Rationale*: Centralizes the embed-and-persist logic in one function. Failed embeddings (empty vectors for non-empty text) are logged and counted rather than silently ignored, making debugging visible.
+5. **Full Pipeline Integration**:
+   - *Decision*: The `extract_document()` service function now executes the complete ingestion chain: Extract → Clean → Chunk → Embed → Persist, updating `Document.status` through `PROCESSING → EXTRACTED → CHUNKED → EMBEDDED`.
+   - *Rationale*: Ensures a single function call produces a fully indexed document ready for vector similarity search in Phase 14.
+
+---
+
+## 14. Verification & Testing
 
 Both frontend and backend services include automated verification suites:
 
@@ -299,6 +368,10 @@ Both frontend and backend services include automated verification suites:
   - `test_conversations.py`: Validates conversation creation, deletion cascades, and multi-tenant isolation.
   - `test_documents.py`: Validates PDF uploads, tri-fold validation, size limits, and access guards.
   - `test_extraction.py`: Validates multi-page parsing, blank page detection, and corruption error handling.
-  - `scripts/seed_check.py` & `scripts/extract_check.py`: Developer smoke test scripts.
+  - `test_cleaning.py`: Validates text normalization, hyphenation, and footer stripping rules.
+  - `test_chunking.py`: Validates paragraph-based chunk boundaries, sentence splitting, and DB persistence.
+  - `test_embeddings.py`: Validates embedding API mock calls, batch splits, error retry flows, vector insert/read-back with correct dimensionality, and cosine similarity query execution against real PostgreSQL data.
+  - `scripts/seed_check.py`, `scripts/extract_check.py`, `scripts/embed_check.py`, `scripts/pipeline_check.py`: Developer smoke test scripts for individual phase and full end-to-end pipeline verification.
 - **Frontend Build Verification**:
   - `npm run build`: Compiles static pages, dynamic chunk traces, and TypeScript definitions cleanly.
+

@@ -145,7 +145,11 @@ def extract_document(db: Session, document_id: int) -> ExtractionResult:
     # Update document status to CHUNKED
     doc.status = DocumentStatus.CHUNKED
     db.commit()
-    db.refresh(doc)
 
+    # Embed and persist chunk vectors (Phase 12)
+    from app.rag.embeddings import embed_document_chunks
+    embed_document_chunks(db, doc.id)
+
+    db.refresh(doc)
     return result
 
