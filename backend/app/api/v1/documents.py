@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.enums import UserRole
 from app.core.deps import get_current_user, get_allowed_tiers, require_role
-from app.schemas.document import DocumentOut
+from app.schemas.document import DocumentOut, IngestionResult
 import app.services.document as service
 
 documents_router = APIRouter(prefix="/api/v1/documents", tags=["Documents"])
@@ -61,3 +61,18 @@ def delete_document(
     Requires LECTURER or ADMIN role.
     """
     service.service_delete_document(db, document_id=id, allowed_tiers=allowed_tiers)
+
+
+@documents_router.post("/{id}/ingest", response_model=IngestionResult)
+def ingest_document(
+    id: int,
+    force: bool = False,
+    db: Session = Depends(get_db),
+    admin_or_lecturer: User = Depends(require_role(UserRole.LECTURER, UserRole.ADMIN)),
+):
+    """
+    Manually trigger the end-to-end RAG ingestion pipeline for a stored document.
+    Requires LECTURER or ADMIN role.
+    """
+    return service.ingest_document(db=db, document_id=id, force=force)
+

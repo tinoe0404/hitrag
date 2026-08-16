@@ -17,3 +17,12 @@ class DocumentOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class IngestionResult(BaseModel):
+    document_id: int
+    status: DocumentStatus
+    total_chunks: int
+    embedded_chunks: int
+    failed_chunks: int
+    time_taken_seconds: float
+

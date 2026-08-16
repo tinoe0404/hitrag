@@ -356,7 +356,28 @@ To ensure strict security of institutional files, users are mapped to document a
 
 ---
 
-## 14. Verification & Testing
+## 14. Manual Ingestion Trigger & Status Pipeline (Phase 13)
+
+### Key Architectural Decisions — Manual Ingestion Trigger & Ingestion States
+1. **Synchronous Ingestion Endpoint (`POST /api/v1/documents/{id}/ingest`)**:
+   - *Decision*: Added a manual endpoint to trigger `ingest_document()` synchronously.
+   - *Rationale*: Defers background workers and task queues to future production-hardening phases while providing an immediate manual way to process documents.
+2. **Strict Ingestion State Machine**:
+   - *Decision*: Tracks document status dynamically across the pipeline: `UPLOADED` ➔ `EXTRACTING` ➔ `EXTRACTED` ➔ `CLEANING` ➔ `CLEANED` ➔ `CHUNKING` ➔ `CHUNKED` ➔ `EMBEDDING` ➔ `EMBEDDED`.
+   - *Rationale*: Allows frontend clients (or developers) to inspect progress and understand exactly which pipeline phase a document is in without raw database inspect commands.
+3. **Re-Ingestion Prevention and Overrides**:
+   - *Decision*: Block manual ingestion triggers on already `EMBEDDED` documents (returns `400 Bad Request`), unless `force=true` query param is explicitly provided.
+   - *Rationale*: Prevents accidental redundant embedding API token cost and database updates, while allowing full re-runs for system adjustments or debugging.
+4. **Step-Specific Ingestion Error Tracking (`EXT_FAILED` & `EMB_FAILED`)**:
+   - *Decision*: Catches specific pipeline exceptions at the service level and updates document status to `EXT_FAILED` or `EMB_FAILED`.
+   - *Rationale*: Eliminates generic "FAILED" states, ensuring diagnostic visibility in the system.
+5. **RBAC Endpoint Protection**:
+   - *Decision*: Restricted the ingestion manual trigger to `LECTURER` or `ADMIN` roles via `require_role`.
+   - *Rationale*: Matches document upload permissions and prevents students or public users from invoking high-resource pipeline flows.
+
+---
+
+## 15. Verification & Testing
 
 Both frontend and backend services include automated verification suites:
 
@@ -371,7 +392,7 @@ Both frontend and backend services include automated verification suites:
   - `test_cleaning.py`: Validates text normalization, hyphenation, and footer stripping rules.
   - `test_chunking.py`: Validates paragraph-based chunk boundaries, sentence splitting, and DB persistence.
   - `test_embeddings.py`: Validates embedding API mock calls, batch splits, error retry flows, vector insert/read-back with correct dimensionality, and cosine similarity query execution against real PostgreSQL data.
+  - `test_ingestion.py`: Validates the manual ingestion POST endpoint, pipeline state changes, error handling/boundaries, re-ingestion block logic, and force override behavior.
   - `scripts/seed_check.py`, `scripts/extract_check.py`, `scripts/embed_check.py`, `scripts/pipeline_check.py`: Developer smoke test scripts for individual phase and full end-to-end pipeline verification.
 - **Frontend Build Verification**:
   - `npm run build`: Compiles static pages, dynamic chunk traces, and TypeScript definitions cleanly.
-

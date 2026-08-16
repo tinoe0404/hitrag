@@ -7,15 +7,23 @@ class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"
 
 class DocumentStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
+    PENDING = "PENDING"          # Keep for backward compatibility
+    UPLOADED = "UPLOADED"        # Initial upload status
+    PROCESSING = "PROCESSING"    # Keep for backward compatibility
+    EXTRACTING = "EXTRACTING"
     EXTRACTED = "EXTRACTED"
-    EXT_FAILED = "EXT_FAILED"
+    CLEANING = "CLEANING"
+    CLEANED = "CLEANED"
+    CHUNKING = "CHUNKING"
     CHUNKED = "CHUNKED"
-    EMB_READY = "EMB_READY"
+    EMBEDDING = "EMBEDDING"
     EMBEDDED = "EMBEDDED"
+    EXT_FAILED = "EXT_FAILED"
+    EMB_FAILED = "EMB_FAILED"
+    EMB_READY = "EMB_READY"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+
 
 class MessageRole(str, enum.Enum):
     USER = "user"

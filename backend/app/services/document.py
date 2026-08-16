@@ -1,8 +1,12 @@
 from typing import List
 import json
 import os
+import time
+import logging
 from fastapi import UploadFile, HTTPException, status
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger("hitrag.ingestion")
 
 from app.models.document import Document
 from app.models.enums import UserRole, DocumentStatus
@@ -44,7 +48,7 @@ def service_upload_document(
         storage_path=storage_path,
         access_tier=access_tier,
         uploaded_by=user.id,
-        status=DocumentStatus.PENDING,
+        status=DocumentStatus.UPLOADED,
     )
 
 def service_list_documents(db: Session, allowed_tiers: List[UserRole]) -> List[Document]:
@@ -152,4 +156,141 @@ def extract_document(db: Session, document_id: int) -> ExtractionResult:
 
     db.refresh(doc)
     return result
+
+
+def ingest_document(db: Session, document_id: int, force: bool = False) -> dict:
+    """
+    Manually triggers the end-to-end ingestion pipeline:
+    Extract ➔ Clean ➔ Chunk ➔ Embed ➔ Persist.
+    
+    Semantics of re-running:
+    - If status is already EMBEDDED, raise HTTPException (400 Bad Request) unless force=True.
+    - If force=True, re-run everything (overwriting/recreating chunks and embeddings).
+    """
+    doc = repo.get_document_by_id(db, document_id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    # Check state where ingestion makes sense
+    if doc.status == DocumentStatus.EMBEDDED and not force:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document is already fully ingested and embedded. Use force=True to re-ingest."
+        )
+
+    start_time = time.time()
+    chunk_count = 0
+    embedded_count = 0
+    failed_embed_count = 0
+
+    try:
+        # --- 1. Extraction ---
+        doc.status = DocumentStatus.EXTRACTING
+        db.commit()
+
+        try:
+            extraction_result = extract_pages(doc.storage_path)
+        except ExtractionError as e:
+            doc.status = DocumentStatus.EXT_FAILED
+            db.commit()
+            logger.error(f"Ingestion extraction failed for doc {document_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Extraction failed: {str(e)}"
+            )
+
+        doc.status = DocumentStatus.EXTRACTED
+        db.commit()
+
+        # --- 2. Cleaning ---
+        doc.status = DocumentStatus.CLEANING
+        db.commit()
+
+        from app.rag.cleaning import clean_pages
+        cleaned_pages = clean_pages(extraction_result.to_dict_list())
+
+        # Update in-memory extraction result pages with cleaned text
+        for idx, p_dict in enumerate(cleaned_pages):
+            extraction_result.pages[idx].text = p_dict["text"]
+            extraction_result.pages[idx].has_text = p_dict["has_text"]
+
+        # Write the cleaned/extracted JSON on disk alongside the PDF
+        json_path = doc.storage_path.rsplit(".", 1)[0] + ".extracted.json"
+        extraction_data = {
+            "document_id": doc.id,
+            "total_pages": extraction_result.total_pages,
+            "pages_with_text": extraction_result.pages_with_text,
+            "pages_without_text": extraction_result.pages_without_text,
+            "extraction_status": extraction_result.extraction_status,
+            "pages": extraction_result.to_dict_list(),
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(extraction_data, f, ensure_ascii=False, indent=2)
+
+        doc.status = DocumentStatus.CLEANED
+        db.commit()
+
+        # --- 3. Chunking ---
+        doc.status = DocumentStatus.CHUNKING
+        db.commit()
+
+        from app.rag.chunking import chunk_pages
+        chunks = chunk_pages(extraction_result.to_dict_list(), doc.id)
+        repo.bulk_insert_chunks(db, doc.id, chunks)
+        chunk_count = len(chunks)
+
+        doc.status = DocumentStatus.CHUNKED
+        db.commit()
+
+        # --- 4. Embedding ---
+        doc.status = DocumentStatus.EMBEDDING
+        db.commit()
+
+        try:
+            from app.rag.embeddings import embed_document_chunks, EmbeddingError
+            embed_document_chunks(db, doc.id)
+        except Exception as e:
+            # Catch embedding exceptions
+            doc.status = DocumentStatus.EMB_FAILED
+            db.commit()
+            logger.error(f"Ingestion embedding failed for doc {document_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Embedding failed: {str(e)}"
+            )
+
+        # Retrieve count of successful vs failed embeddings
+        from app.models.chunk import Chunk
+        db_chunks = db.query(Chunk).filter(Chunk.document_id == doc.id).all()
+        embedded_count = sum(1 for c in db_chunks if c.embedding is not None)
+        failed_embed_count = len(db_chunks) - embedded_count
+
+        db.refresh(doc)
+
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is so FastAPI returns them directly
+        raise
+    except Exception as e:
+        # Fallback general exception catcher
+        doc.status = DocumentStatus.FAILED
+        db.commit()
+        logger.error(f"Ingestion pipeline failed unexpectedly for doc {document_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ingestion failed due to an unexpected error: {str(e)}"
+        )
+
+    total_time = time.time() - start_time
+    return {
+        "document_id": doc.id,
+        "status": doc.status,
+        "total_chunks": chunk_count,
+        "embedded_chunks": embedded_count,
+        "failed_chunks": failed_embed_count,
+        "time_taken_seconds": round(total_time, 2),
+    }
+
 
