@@ -371,13 +371,33 @@ To ensure strict security of institutional files, users are mapped to document a
 4. **Step-Specific Ingestion Error Tracking (`EXT_FAILED` & `EMB_FAILED`)**:
    - *Decision*: Catches specific pipeline exceptions at the service level and updates document status to `EXT_FAILED` or `EMB_FAILED`.
    - *Rationale*: Eliminates generic "FAILED" states, ensuring diagnostic visibility in the system.
-5. **RBAC Endpoint Protection**:
-   - *Decision*: Restricted the ingestion manual trigger to `LECTURER` or `ADMIN` roles via `require_role`.
+- [x] Restricted the ingestion manual trigger to `LECTURER` or `ADMIN` roles via `require_role`.
    - *Rationale*: Matches document upload permissions and prevents students or public users from invoking high-resource pipeline flows.
 
 ---
 
-## 15. Verification & Testing
+## 15. Retrieval Without LLM (Phase 14)
+
+### Key Architectural Decisions — Semantic Query & Retrieval
+1. **Model Consistency via Unified Embedding Import**:
+   - *Decision*: Imported and reused `embed_text` directly from `app/rag/embeddings.py` for query vector generation.
+   - *Rationale*: Guarantees that query strings and document chunks are embedded using identical configuration/dimensions (`gemini-embedding-001` with truncated 768-d). If models or configs differed, the vector space would diverge, breaking similarity calculations.
+2. **PostgreSQL Native Cosine Distance Operator (`<=>`)**:
+   - *Decision*: Leveraged pgvector's SQLAlchemy integration `Chunk.embedding.cosine_distance(query_vec)` directly in the order clause: `order_by(distance_expr)`.
+   - *Rationale*: Executes the entire distance calculation and sorting server-side in PostgreSQL using index structures (e.g. HNSW), avoiding loading large floats arrays into python runtime.
+3. **Explicit Score Metrics Dual-Output**:
+   - *Decision*: Returned both `cosine_distance` and `cosine_similarity` (`1.0 - distance`) in retrieval responses.
+   - *Rationale*: Avoids ambiguity around raw score metrics. Similarity maps to range `[-1.0, 1.0]` where higher represents closer semantics.
+4. **Empty Query Boundary Guarding**:
+   - *Decision*: Raised `ValueError` on empty or whitespace-only queries.
+   - *Rationale*: Avoids requesting embeddings for empty strings, which consumes API credits and returns low-quality/meaningless vector similarities.
+5. **Zero-Chunk Database Resilience**:
+   - *Decision*: Ensured that query returns an empty list `[]` cleanly if no chunks with embeddings exist.
+   - *Rationale*: Standard database search safety; prevents crashes during initial deployments or after database resets.
+
+---
+
+## 16. Verification & Testing
 
 Both frontend and backend services include automated verification suites:
 
@@ -393,6 +413,8 @@ Both frontend and backend services include automated verification suites:
   - `test_chunking.py`: Validates paragraph-based chunk boundaries, sentence splitting, and DB persistence.
   - `test_embeddings.py`: Validates embedding API mock calls, batch splits, error retry flows, vector insert/read-back with correct dimensionality, and cosine similarity query execution against real PostgreSQL data.
   - `test_ingestion.py`: Validates the manual ingestion POST endpoint, pipeline state changes, error handling/boundaries, re-ingestion block logic, and force override behavior.
-  - `scripts/seed_check.py`, `scripts/extract_check.py`, `scripts/embed_check.py`, `scripts/pipeline_check.py`: Developer smoke test scripts for individual phase and full end-to-end pipeline verification.
+  - `test_retrieval.py`: Validates retrieval rank ordering (by mocking query embeddings and comparing known vectors), top_k restrictions, empty query handling, and empty table compatibility.
+  - `scripts/seed_check.py`, `scripts/extract_check.py`, `scripts/embed_check.py`, `scripts/pipeline_check.py`, `scripts/retrieve_check.py`: Developer smoke test and verification scripts.
 - **Frontend Build Verification**:
   - `npm run build`: Compiles static pages, dynamic chunk traces, and TypeScript definitions cleanly.
+

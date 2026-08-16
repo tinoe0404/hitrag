@@ -64,3 +64,32 @@ def debug_extract_document(
         ],
     }
 
+
+@debug_router.get("/retrieve")
+def debug_retrieve(
+    query: str,
+    top_k: int = 5,
+    db: Session = Depends(get_db),
+):
+    """
+    DEBUG: Run semantic vector search/retrieval against all chunk embeddings.
+    """
+    from app.rag.retrieval import retrieve
+    from app.rag.embeddings import EmbeddingError
+    from fastapi import HTTPException, status
+
+    try:
+        results = retrieve(db=db, query=query, top_k=top_k)
+        return {"query": query, "top_k": top_k, "results": results}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except EmbeddingError as e:
+        raise HTTPException(
+            status_code=status.HTTP_524_A_TIMEOUT_OCCURRED,  # 524 or similar, let's use 502/500/status.HTTP_500_INTERNAL_SERVER_ERROR
+            detail=f"Embedding generation failed: {str(e)}"
+        )
+
+
