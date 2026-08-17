@@ -196,3 +196,103 @@ def test_generation_failure_raises_generation_error(mock_get_client):
     mock_get_client.return_value = mock_client
     with pytest.raises(GenerationError):
         generate_answer("q", [_chunk()])
+
+
+# ---------------------------------------------------------------------------
+# Phase 19: Citation tracking tests
+# ---------------------------------------------------------------------------
+
+@patch("app.rag.generation._get_client")
+def test_generate_answer_attaches_correct_citations(mock_get_client):
+    """Verify that an ANSWERED result includes citations matching the input chunks."""
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = _mock_gemini_text(
+        '{"status": "ANSWERED", "answer": "HIT has a strict admissions policy."}'
+    )
+    mock_get_client.return_value = mock_client
+
+    chunks = [
+        {"chunk_id": 101, "document_id": 1, "document_title": "Admissions Handbook", "page_number": 2, "content": "Req A"},
+        {"chunk_id": 102, "document_id": 2, "document_title": "Grading Handbook", "page_number": 5, "content": "Req B"}
+    ]
+
+    result = generate_answer("admissions reqs", chunks)
+    assert result.status == "ANSWERED"
+    assert len(result.citations) == 2
+    
+    # Assert citation contents
+    c1 = result.citations[0]
+    assert c1["document_id"] == 1
+    assert c1["document_title"] == "Admissions Handbook"
+    assert c1["page_number"] == 2
+    assert c1["chunk_id"] == 101
+    assert c1["chunk_ids"] == [101]
+
+    c2 = result.citations[1]
+    assert c2["document_id"] == 2
+    assert c2["document_title"] == "Grading Handbook"
+    assert c2["page_number"] == 5
+    assert c2["chunk_id"] == 102
+    assert c2["chunk_ids"] == [102]
+
+
+@patch("app.rag.generation._get_client")
+def test_generate_answer_deduplicates_citations(mock_get_client):
+    """Verify that citations are collapsed/deduplicated by (document_id, page_number)."""
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = _mock_gemini_text(
+        '{"status": "ANSWERED", "answer": "Deduplicated answer."}'
+    )
+    mock_get_client.return_value = mock_client
+
+    chunks = [
+        {"chunk_id": 201, "document_id": 1, "document_title": "Handbook", "page_number": 3, "content": "Part 1"},
+        {"chunk_id": 202, "document_id": 1, "document_title": "Handbook", "page_number": 3, "content": "Part 2"},
+        {"chunk_id": 203, "document_id": 2, "document_title": "Other", "page_number": 1, "content": "Other part"}
+    ]
+
+    result = generate_answer("query text", chunks)
+    assert result.status == "ANSWERED"
+    # Three input chunks, but only two unique document+page pairs.
+    assert len(result.citations) == 2
+
+    # Check deduplicated entry for (document_id=1, page_number=3)
+    c_handbook = [c for c in result.citations if c["document_id"] == 1][0]
+    assert c_handbook["document_title"] == "Handbook"
+    assert c_handbook["page_number"] == 3
+    # The representative chunk_id can be the first one seen (201)
+    assert c_handbook["chunk_id"] == 201
+    # Full list of chunks is kept for traceability
+    assert c_handbook["chunk_ids"] == [201, 202]
+
+    # Check entry for (document_id=2, page_number=1)
+    c_other = [c for c in result.citations if c["document_id"] == 2][0]
+    assert c_other["document_title"] == "Other"
+    assert c_other["page_number"] == 1
+    assert c_other["chunk_id"] == 203
+    assert c_other["chunk_ids"] == [203]
+
+
+@patch("app.rag.generation._get_client")
+def test_generate_answer_empty_citations_for_non_answered(mock_get_client):
+    """Verify that NOT_ENOUGH_INFORMATION and PARSE_ERROR always have empty citations."""
+    mock_client = MagicMock()
+    # Mock NOT_ENOUGH_INFORMATION
+    mock_client.models.generate_content.return_value = _mock_gemini_text(
+        '{"status": "NOT_ENOUGH_INFORMATION", "answer": ""}'
+    )
+    mock_get_client.return_value = mock_client
+
+    chunks = [{"chunk_id": 301, "document_id": 1, "document_title": "Doc", "page_number": 1, "content": "x"}]
+    result_nei = generate_answer("query", chunks)
+    assert result_nei.status == "NOT_ENOUGH_INFORMATION"
+    assert result_nei.citations == []
+
+    # Mock PARSE_ERROR
+    mock_client.models.generate_content.return_value = _mock_gemini_text(
+        "totally unparseable output"
+    )
+    result_pe = generate_answer("query", chunks)
+    assert result_pe.status == "PARSE_ERROR"
+    assert result_pe.citations == []
+

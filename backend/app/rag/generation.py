@@ -29,7 +29,7 @@ import json
 import re
 import time
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Any, Optional
 
 from google import genai
@@ -72,6 +72,7 @@ class GenerationResult:
     """
     status: str
     answer: str
+    citations: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class GenerationError(Exception):
@@ -278,7 +279,7 @@ def generate_answer(query: str, chunks: List[Dict[str, Any]]) -> GenerationResul
     """
     if not chunks:
         logger.info("generate_answer called with empty context – short‑circuiting to NOT_ENOUGH_INFORMATION.")
-        return GenerationResult(status="NOT_ENOUGH_INFORMATION", answer="")
+        return GenerationResult(status="NOT_ENOUGH_INFORMATION", answer="", citations=[])
 
     prompt = build_prompt(query, chunks)
     client = _get_client()
@@ -290,6 +291,36 @@ def generate_answer(query: str, chunks: List[Dict[str, Any]]) -> GenerationResul
     elif result.status == "NOT_ENOUGH_INFORMATION":
         # Normal, expected outcome – log at INFO, not WARNING.
         logger.info("generate_answer: model classified query as NOT_ENOUGH_INFORMATION.")
+    elif result.status == "ANSWERED":
+        # -----------------------------------------------------------------------
+        # CITATION POLICY LIMITATION NOTE:
+        # In this phase, we implement a simplified attribution model. We cite every
+        # chunk that was included in the prompt's context for an ANSWERED response.
+        # We do not attempt to verify which specific chunk the model actually
+        # drew from for which part of the generated text (fine-grained attribution).
+        # This is a known limitation of the current citation tracking system.
+        # -----------------------------------------------------------------------
+        seen_citations = {}
+        for chunk in chunks:
+            doc_id = chunk.get("document_id")
+            page_num = chunk.get("page_number")
+            # Deduplicate citations by (document_id, page_number)
+            key = (doc_id, page_num)
+            chunk_id = chunk.get("chunk_id")
+            if key not in seen_citations:
+                seen_citations[key] = {
+                    "document_id": doc_id,
+                    "document_title": chunk.get("document_title", "<unknown doc>"),
+                    "page_number": page_num,
+                    "chunk_id": chunk_id,
+                    "chunk_ids": [chunk_id] if chunk_id is not None else []
+                }
+            else:
+                # Keep underlying chunk_ids for traceability
+                if chunk_id is not None:
+                    seen_citations[key]["chunk_ids"].append(chunk_id)
+
+        result.citations = list(seen_citations.values())
 
     return result
 
