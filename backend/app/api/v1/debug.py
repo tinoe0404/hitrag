@@ -94,5 +94,35 @@ def debug_retrieve(
             detail=f"Embedding generation failed: {str(e)}"
         )
 
+@debug_router.get("/generate")
+def debug_generate(
+    query: str,
+    top_k: int = 5,
+    db: Session = Depends(get_db),
+    allowed_tiers: List[UserRole] = Depends(get_allowed_tiers),
+):
+    """
+    DEBUG: Run retrieval then generation to see both chunks and final answer.
+    The endpoint is for internal testing; it is NOT part of the public API.
+    """
+    from app.rag.retrieval import retrieve
+    from app.rag.generation import generate_answer, GenerationError
+    from fastapi import HTTPException, status
+    try:
+        chunks = retrieve(db=db, query=query, allowed_tiers=allowed_tiers, top_k=top_k)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    try:
+        answer = generate_answer(query, chunks)
+    except GenerationError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    return {
+        "query": query,
+        "top_k": top_k,
+        "retrieved_chunks": chunks,
+        "generated_answer": answer,
+    }
 
 
