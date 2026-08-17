@@ -1,4 +1,4 @@
-# Generation Module for HITRAG (Phase 17)
+# Generation Module for HITRAG (Phase 17 → Phase 18: Grounded Answers)
 """
 Generation utilities that take retrieved chunks, build a prompt, and call the Gemini LLM.
 
@@ -8,15 +8,28 @@ different request shapes, model names, and error handling semantics.
 The module mirrors the embedding module's disciplined retry/backoff logic and defines a
 clear ``GenerationError`` exception type.
 
-Only the minimal functionality needed for Phase 17 is provided – a prompt builder, the
-``generate_answer`` function, and short‑circuit handling for empty context.
+Phase 18 adds grounded‑answer enforcement:
+- The prompt now requires a JSON response with ``status`` and ``answer`` fields.
+- ``generate_answer`` returns a ``GenerationResult`` dataclass instead of a plain string.
+- A robust ``parse_model_output`` function handles well‑formed JSON, JSON buried in
+  surrounding text (regex extraction), and completely unparseable output.
 
-Future phases will extend this with grounding enforcement, citation extraction, and the
-public ``/chat`` endpoint.
+**Why JSON instead of a delimiter‑based format?**
+JSON is unambiguous, universally supported by every language, trivially parseable with
+``json.loads``, and naturally extensible (we can add a ``citations`` field in Phase 19
+without changing the parsing skeleton).  Delimiter‑based formats (e.g. ``STATUS: …\\n---\\nANSWER: …``)
+are fragile when the answer itself contains the delimiter characters, and require custom
+parsing logic that doesn't generalize.
+
+Future phases will add citation extraction (Phase 19) and the public ``/chat`` endpoint
+(Phase 20).
 """
 
+import json
+import re
 import time
 import logging
+from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional
 
 from google import genai
@@ -32,9 +45,39 @@ GENERATION_MODEL = "gemini-3.6-flash"  # fast, low‑latency, cost‑effective m
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 
+# ---------------------------------------------------------------------------
+# Caller‑facing message for the NOT_ENOUGH_INFORMATION status.
+# This is a legitimate, expected response – not an error.
+# ---------------------------------------------------------------------------
+NOT_ENOUGH_INFO_MESSAGE = (
+    "I don't have enough information in the available documents to answer that."
+)
+
+# ---------------------------------------------------------------------------
+# Result dataclass
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GenerationResult:
+    """Structured result from ``generate_answer``.
+
+    ``status`` is one of:
+      - ``"ANSWERED"`` – the model found sufficient context and produced an answer.
+      - ``"NOT_ENOUGH_INFORMATION"`` – the model determined the context does not
+        support a confident answer.  This is a normal, expected outcome.
+      - ``"PARSE_ERROR"`` – the model's raw output could not be parsed as valid
+        JSON with the expected schema.  Internally distinct from
+        ``NOT_ENOUGH_INFORMATION`` so callers can log / metric it separately,
+        but user‑facing text may be identical.
+    """
+    status: str
+    answer: str
+
+
 class GenerationError(Exception):
     """Raised when the Gemini generation API fails after retries."""
     pass
+
 
 def _get_client() -> genai.Client:
     """Create a Gemini client using the API key from settings.
@@ -49,25 +92,48 @@ def _get_client() -> genai.Client:
         )
     return genai.Client(api_key=api_key)
 
+# ---------------------------------------------------------------------------
+# Prompt builder (Phase 18 – grounded JSON format)
+# ---------------------------------------------------------------------------
+
 def build_prompt(query: str, chunks: List[Dict[str, Any]]) -> str:
     """Create a prompt that instructs the LLM to answer using only the provided context.
 
-    The prompt format:
-    Answer the following question **using ONLY the provided context**. Do not rely on any external knowledge.
-    If the answer cannot be derived from the context, respond with "I don't know based on the given information."
+    The model is instructed to respond with a single JSON object containing:
+      - ``"status"``: ``"ANSWERED"`` or ``"NOT_ENOUGH_INFORMATION"``
+      - ``"answer"``: the answer text (empty string when status is NOT_ENOUGH_INFORMATION)
 
-    Question: <query>
-
-    Context:
-    ----
-    1. <Document Title> (Page <page_number>)
-    <chunk content>
-    ----
-    ...
+    The prompt explicitly forbids hedge‑then‑answer behaviour: if the context
+    doesn't fully support a confident answer, the model must refuse rather than
+    partially answer.
     """
-    lines = []
+    lines: List[str] = []
+
+    # System instruction block
     lines.append(
-        "Answer the following question **using ONLY the provided context**. Do not rely on any external knowledge. If the answer cannot be derived from the context, respond with \"I don't know based on the given information.\""
+        "You are a strict question‑answering assistant. "
+        "Answer the following question using ONLY the provided context. "
+        "Do not rely on any external or prior knowledge."
+    )
+    lines.append("")
+    lines.append("## Response rules")
+    lines.append(
+        "1. If the context **fully and confidently** supports an answer, respond with:"
+    )
+    lines.append('   {"status": "ANSWERED", "answer": "<your answer>"}')
+    lines.append(
+        "2. If the context does NOT contain enough information to answer the question "
+        "completely and confidently, respond with:"
+    )
+    lines.append('   {"status": "NOT_ENOUGH_INFORMATION", "answer": ""}')
+    lines.append(
+        "3. Do NOT hedge. Do NOT partially answer when you are unsure. "
+        "If you cannot fully answer, choose NOT_ENOUGH_INFORMATION."
+    )
+    lines.append("")
+    lines.append(
+        "**IMPORTANT:** Respond *only* with the JSON object on a single line. "
+        "No surrounding text, no markdown fences, no explanation outside the JSON."
     )
     lines.append("")
     lines.append(f"Question: {query}")
@@ -82,6 +148,76 @@ def build_prompt(query: str, chunks: List[Dict[str, Any]]) -> str:
         lines.append(content.strip())
         lines.append("----")
     return "\n".join(lines)
+
+# ---------------------------------------------------------------------------
+# Response parsing (Phase 18)
+# ---------------------------------------------------------------------------
+
+# Pre‑compiled regex to extract the first JSON object from surrounding text.
+_JSON_OBJECT_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
+
+_VALID_STATUSES = {"ANSWERED", "NOT_ENOUGH_INFORMATION"}
+
+
+def parse_model_output(raw: str) -> GenerationResult:
+    """Parse the model's raw text into a ``GenerationResult``.
+
+    Strategy (three tiers):
+    1. Try ``json.loads`` on the stripped output directly.
+    2. If that fails, use a regex to extract the first ``{…}`` block and parse it.
+    3. If both fail, return ``status="PARSE_ERROR"`` – never silently guess
+       ``ANSWERED`` when the format didn't parse.
+
+    Even after successful JSON parsing, we validate that ``status`` is one of the
+    two expected values and that the required keys are present.
+    """
+    stripped = raw.strip()
+
+    # --- Tier 1: direct parse ---
+    parsed = _try_json_loads(stripped)
+
+    # --- Tier 2: regex extraction ---
+    if parsed is None:
+        match = _JSON_OBJECT_RE.search(stripped)
+        if match:
+            parsed = _try_json_loads(match.group(0))
+
+    # --- Tier 3: give up ---
+    if parsed is None:
+        logger.warning("parse_model_output: could not extract valid JSON from model output.")
+        return GenerationResult(status="PARSE_ERROR", answer="")
+
+    # Validate schema
+    status = parsed.get("status", "").strip().upper()
+    answer = parsed.get("answer", "")
+
+    if status not in _VALID_STATUSES:
+        logger.warning(
+            "parse_model_output: unexpected status '%s' in model output.", status
+        )
+        return GenerationResult(status="PARSE_ERROR", answer="")
+
+    # If model says NOT_ENOUGH_INFORMATION but still stuffed an answer in, clear it.
+    if status == "NOT_ENOUGH_INFORMATION":
+        answer = ""
+
+    return GenerationResult(status=status, answer=answer.strip() if answer else "")
+
+
+def _try_json_loads(text: str) -> Optional[dict]:
+    """Attempt ``json.loads``; return ``None`` on any failure instead of raising."""
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict):
+            return obj
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Gemini API call with retry
+# ---------------------------------------------------------------------------
 
 def _call_generation_api(client: genai.Client, prompt: str) -> str:
     """Invoke Gemini generation with exponential backoff retry logic.
@@ -122,17 +258,47 @@ def _call_generation_api(client: genai.Client, prompt: str) -> str:
         f"Generation failed after {MAX_RETRIES} attempts. Last error: {type(last_error).__name__}: {last_error}"
     )
 
-def generate_answer(query: str, chunks: List[Dict[str, Any]]) -> str:
-    """High‑level API used by the backend to produce an answer.
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
-    * If ``chunks`` is empty we short‑circuit and return a clear message.
-    * Otherwise we build the prompt, call the Gemini generation endpoint and return the answer text.
+def generate_answer(query: str, chunks: List[Dict[str, Any]]) -> GenerationResult:
+    """High‑level API used by the backend to produce a grounded answer.
+
+    Returns a ``GenerationResult`` with one of three statuses:
+      - ``ANSWERED`` – context was sufficient; ``answer`` contains the response.
+      - ``NOT_ENOUGH_INFORMATION`` – context was insufficient; this is a normal,
+        expected outcome (not an error).
+      - ``PARSE_ERROR`` – the model's output could not be parsed.  Internally
+        distinct so it can be logged/metriced, but callers may present the same
+        user‑facing text as ``NOT_ENOUGH_INFORMATION``.
+
+    If ``chunks`` is empty we short‑circuit with ``NOT_ENOUGH_INFORMATION``
+    without calling the model – there is no context to ground an answer on.
     """
     if not chunks:
-        logger.info("generate_answer called with empty context – returning placeholder.")
-        return "No context available for this query."
+        logger.info("generate_answer called with empty context – short‑circuiting to NOT_ENOUGH_INFORMATION.")
+        return GenerationResult(status="NOT_ENOUGH_INFORMATION", answer="")
+
     prompt = build_prompt(query, chunks)
     client = _get_client()
-    return _call_generation_api(client, prompt)
+    raw_output = _call_generation_api(client, prompt)
+    result = parse_model_output(raw_output)
 
-__all__ = ["GenerationError", "build_prompt", "generate_answer"]
+    if result.status == "PARSE_ERROR":
+        logger.warning("generate_answer: model output failed to parse. Raw: %s", raw_output[:500])
+    elif result.status == "NOT_ENOUGH_INFORMATION":
+        # Normal, expected outcome – log at INFO, not WARNING.
+        logger.info("generate_answer: model classified query as NOT_ENOUGH_INFORMATION.")
+
+    return result
+
+
+__all__ = [
+    "GenerationError",
+    "GenerationResult",
+    "NOT_ENOUGH_INFO_MESSAGE",
+    "build_prompt",
+    "generate_answer",
+    "parse_model_output",
+]

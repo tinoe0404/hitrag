@@ -1,0 +1,14 @@
+[
+  {
+    "id": "unrelated_hydroponics",
+    "question": "How do I set up a hydroponics system for tomatoes?",
+    "expected_status": "NOT_ENOUGH_INFORMATION",
+    "rationale": "Completely unrelated to an institutional handbook — gardening topic."
+  },
+  {
+    "id": "plausible_absent_grade_appeal",
+    "question": "What is the process for appealing a grade?",
+    "expected_status": "NOT_ENOUGH_INFORMATION",
+    "rationale": "Sounds institutional (the handbook covers grading structure on Page 2) but no appeal process is documented in the ingested content."
+  }
+]

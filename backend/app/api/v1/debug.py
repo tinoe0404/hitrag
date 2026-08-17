@@ -106,7 +106,8 @@ def debug_generate(
     The endpoint is for internal testing; it is NOT part of the public API.
     """
     from app.rag.retrieval import retrieve
-    from app.rag.generation import generate_answer, GenerationError
+    from app.rag.generation import generate_answer, GenerationError, NOT_ENOUGH_INFO_MESSAGE
+    from dataclasses import asdict
     from fastapi import HTTPException, status
     try:
         chunks = retrieve(db=db, query=query, allowed_tiers=allowed_tiers, top_k=top_k)
@@ -115,14 +116,18 @@ def debug_generate(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     try:
-        answer = generate_answer(query, chunks)
+        result = generate_answer(query, chunks)
     except GenerationError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    # For user-facing text, map both NOT_ENOUGH_INFORMATION and PARSE_ERROR to the
+    # standard refusal message.  The raw status is still returned for debugging.
+    user_answer = result.answer if result.status == "ANSWERED" else NOT_ENOUGH_INFO_MESSAGE
     return {
         "query": query,
         "top_k": top_k,
         "retrieved_chunks": chunks,
-        "generated_answer": answer,
+        "generation_result": asdict(result),
+        "generated_answer": user_answer,
     }
 
 
