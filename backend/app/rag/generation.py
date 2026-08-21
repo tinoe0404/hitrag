@@ -35,7 +35,9 @@ from typing import List, Dict, Any, Optional
 from google import genai
 
 from app.core.config import settings
-
+from sqlalchemy import select
+from app.models.chunk import Chunk
+from app.db.session import SessionLocal
 logger = logging.getLogger("hitrag.generation")
 
 # ---------------------------------------------------------------------------
@@ -320,7 +322,22 @@ def generate_answer(query: str, chunks: List[Dict[str, Any]]) -> GenerationResul
                 if chunk_id is not None:
                     seen_citations[key]["chunk_ids"].append(chunk_id)
 
-        result.citations = list(seen_citations.values())
+        # Validate chunk IDs exist in DB to avoid citing non‑existent chunks
+        input_chunk_ids = [c.get("chunk_id") for c in chunks if c.get("chunk_id") is not None]
+        existing_ids: set[int] = set()
+        if input_chunk_ids:
+            db = SessionLocal()
+            try:
+                existing = db.scalars(select(Chunk.id).where(Chunk.id.in_(input_chunk_ids))).all()
+                existing_ids = set(existing)
+            finally:
+                db.close()
+        filtered_citations = []
+        for citation in seen_citations.values():
+            cid = citation.get("chunk_id")
+            if cid is None or cid in existing_ids:
+                filtered_citations.append(citation)
+        result.citations = filtered_citations
 
     return result
 
