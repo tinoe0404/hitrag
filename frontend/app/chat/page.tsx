@@ -32,9 +32,10 @@ export default function ChatPage() {
   // User Profile & Role State
   const [userRole, setUserRole] = useState<AccessTier>("Student");
   const [messages, setMessages] = useState<MockMessage[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [isSending, setIsSending] = useState(false);
 
-  // Sync role and active conversation messages
+  // Sync role, conversations list, and active conversation messages
   const loadConversationData = useCallback(async () => {
     const { getCurrentUser, mapRoleToAccessTier } = await import("@/lib/api");
     const activeUser = await getCurrentUser();
@@ -47,11 +48,23 @@ export default function ChatPage() {
     const tier = mapRoleToAccessTier(activeUser.role);
     setUserRole(tier);
 
+    try {
+      const convList = await getConversations();
+      setConversations(convList);
+    } catch (err) {
+      console.error("Failed to load conversations:", err);
+    }
+
     if (activeConversationId) {
-      const conv = getConversationById(activeConversationId);
-      if (conv) {
-        setMessages(conv.messages);
-      } else {
+      try {
+        const conv = await getConversationById(activeConversationId);
+        if (conv) {
+          setMessages(conv.messages);
+        } else {
+          setMessages([]);
+        }
+      } catch (err) {
+        console.error("Failed to load conversation details:", err);
         setMessages([]);
       }
     } else {
@@ -73,7 +86,6 @@ export default function ChatPage() {
     };
   }, [loadConversationData]);
 
-  const conversations = getConversations();
   const currentProfile = getCurrentUserProfile(userRole);
 
   const activeAccessScope =
@@ -103,18 +115,43 @@ export default function ChatPage() {
 
     setMessages((prev) => [...prev, userMsg]);
 
-    const targetConvId = activeConversationId || "conv-101";
+    const targetConvId = activeConversationId || "new";
 
-    const { assistantMessage } = await sendMessage(targetConvId, text);
+    try {
+      const { assistantMessage, conversationId } = await sendMessage(targetConvId, text);
 
-    setMessages((prev) => [...prev, assistantMessage]);
-    setIsSending(false);
+      setMessages((prev) => [...prev, assistantMessage]);
+      
+      // If a new conversation was created on the backend, update URL and list
+      if (!activeConversationId && conversationId) {
+        router.push(`/chat/${conversationId}`);
+      } else {
+        // Refresh conversations list to update titles if changed
+        getConversations().then(setConversations).catch(() => {});
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   // Helper to render message content with clickable citations
   const renderMessageContent = (msg: MockMessage) => {
     if (msg.role === "user") {
       return <p className="leading-relaxed">{msg.content}</p>;
+    }
+
+    if (msg.status === "PARSE_ERROR") {
+      return (
+        <div className="flex items-start gap-2 text-hit-warning bg-hit-warning/10 p-3.5 rounded-lg border border-hit-warning/30 font-mono text-xs leading-relaxed">
+          <span className="text-sm">⚠️</span>
+          <div>
+            <p className="font-bold uppercase tracking-wider mb-1">System Parse Error</p>
+            <p>{msg.content}</p>
+          </div>
+        </div>
+      );
     }
 
     if (msg.groundingState === "restricted" && msg.restrictedData) {
@@ -225,7 +262,7 @@ export default function ChatPage() {
                 onSelectPrompt={handleSendMessage}
               />
             ) : (
-              <div className="max-w-4xl mx-auto space-y-6 w-full my-auto">
+              <div className="max-w-4xl mx-auto space-y-6 w-full my-auto animate-fadeIn">
                 {messages.map((msg) => {
                   const isUser = msg.role === "user";
                   return (
@@ -242,11 +279,22 @@ export default function ChatPage() {
                           "relative w-full max-w-3xl text-sm transition-all",
                           isUser
                             ? "bg-hit-border/40 text-hit-text-primary px-4 py-3 rounded-2xl rounded-tr-sm self-end max-w-xl"
-                            : "bg-hit-surface text-hit-text-primary border border-hit-border rounded-xl p-5 pl-6 shadow-sm"
+                            : cn(
+                                "bg-hit-surface text-hit-text-primary border rounded-xl p-5 pl-6 shadow-sm",
+                                msg.status === "PARSE_ERROR" ? "border-hit-warning/40 bg-hit-warning/5" : "border-hit-border"
+                              )
                         )}
                       >
-                        {!isUser && msg.groundingState && (
-                          <GroundingRule state={msg.groundingState} />
+                        {!isUser && (
+                          <GroundingRule 
+                            state={
+                              msg.status === "PARSE_ERROR"
+                                ? "restricted"
+                                : msg.status === "NOT_ENOUGH_INFORMATION"
+                                ? "ungrounded"
+                                : "grounded"
+                            } 
+                          />
                         )}
 
                         {!isUser && (
@@ -257,14 +305,18 @@ export default function ChatPage() {
                             <span
                               className={cn(
                                 "font-mono text-[10px] font-semibold px-2 py-0.5 rounded",
-                                msg.groundingState === "grounded"
-                                  ? "bg-hit-amber/15 text-hit-blue"
-                                  : "bg-hit-warning/15 text-hit-warning"
+                                msg.status === "PARSE_ERROR"
+                                  ? "bg-hit-warning/15 text-hit-warning"
+                                  : msg.status === "NOT_ENOUGH_INFORMATION"
+                                  ? "bg-hit-border/30 text-hit-text-secondary"
+                                  : "bg-hit-amber/15 text-hit-blue"
                               )}
                             >
-                              {msg.groundingState === "grounded"
-                                ? "✓ Grounded in HIT Records"
-                                : "[!] Restricted Access Boundary"}
+                              {msg.status === "PARSE_ERROR"
+                                ? "[!] System Parse Error"
+                                : msg.status === "NOT_ENOUGH_INFORMATION"
+                                ? "✓ System Refusal Notice"
+                                : "✓ Grounded in HIT Records"}
                             </span>
                           </div>
                         )}

@@ -315,7 +315,10 @@ def generate_answer(query: str, chunks: List[Dict[str, Any]]) -> GenerationResul
                     "document_title": chunk.get("document_title", "<unknown doc>"),
                     "page_number": page_num,
                     "chunk_id": chunk_id,
-                    "chunk_ids": [chunk_id] if chunk_id is not None else []
+                    "chunk_ids": [chunk_id] if chunk_id is not None else [],
+                    "excerpt": chunk.get("content", ""),
+                    "access_tier": chunk.get("access_tier").value if chunk.get("access_tier") else "PUBLIC",
+                    "created_at": chunk.get("created_at").isoformat() if chunk.get("created_at") else None,
                 }
             else:
                 # Keep underlying chunk_ids for traceability

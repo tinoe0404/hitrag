@@ -9,6 +9,7 @@ export interface MockMessage {
   content: string;
   groundingState?: GroundingState;
   timestamp: string;
+  status?: "ANSWERED" | "NOT_ENOUGH_INFORMATION" | "PARSE_ERROR";
   citations?: Record<number, CitationDetail>;
   restrictedData?: {
     requiredTier: string;

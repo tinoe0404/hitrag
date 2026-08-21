@@ -162,18 +162,191 @@ export function getCurrentUserProfile(role?: AccessTier): UserProfile {
   return MOCK_USER_PROFILES[activeRole] || MOCK_USER_PROFILES.Student;
 }
 
-export function getConversations(): MockConversation[] {
-  return MOCK_CONVERSATIONS;
+export async function getConversations(): Promise<MockConversation[]> {
+  const token = getStoredToken();
+  if (!token) return [];
+  const res = await fetch(`${API_BASE_URL}/api/v1/conversations`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (res.status === 401) {
+    removeStoredToken();
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch conversations (${res.status})`);
+  }
+  const convList = await res.json();
+  return convList.map((c: any) => ({
+    id: String(c.id),
+    title: c.title,
+    timestamp: new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    group: "Today" as const,
+    messages: [],
+  }));
 }
 
-export function getConversationById(id: string): MockConversation | undefined {
-  return MOCK_CONVERSATIONS.find((conv) => conv.id === id);
+export async function getConversationById(id: string): Promise<MockConversation | undefined> {
+  const token = getStoredToken();
+  if (!token) return undefined;
+  
+  const cleanId = parseInt(id, 10);
+  if (isNaN(cleanId)) return undefined;
+
+  const [convRes, msgRes] = await Promise.all([
+    fetch(`${API_BASE_URL}/api/v1/conversations/${cleanId}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+    fetch(`${API_BASE_URL}/api/v1/conversations/${cleanId}/messages`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  ]);
+
+  if (convRes.status === 401 || msgRes.status === 401) {
+    removeStoredToken();
+    throw new Error("Unauthorized");
+  }
+  if (convRes.status === 404) {
+    return undefined;
+  }
+  if (!convRes.ok || !msgRes.ok) {
+    throw new Error("Failed to fetch conversation or messages");
+  }
+
+  const convData = await convRes.json();
+  const msgData = await msgRes.json();
+
+  const messages: MockMessage[] = msgData.map((m: any) => {
+    let status: "ANSWERED" | "NOT_ENOUGH_INFORMATION" | "PARSE_ERROR" = "ANSWERED";
+    let content = m.content;
+    let groundingState: "grounded" | "restricted" = "grounded";
+
+    if (m.role === "assistant") {
+      if (m.content.startsWith("[System Parse Error]")) {
+        status = "PARSE_ERROR";
+        content = "Something went wrong generating a response, please try again.";
+        groundingState = "restricted";
+      } else if (m.content === "I don't have enough information in the available documents to answer that.") {
+        status = "NOT_ENOUGH_INFORMATION";
+        groundingState = "restricted";
+      }
+    }
+
+    return {
+      id: `m-${m.id}`,
+      role: m.role as "user" | "assistant",
+      content: content,
+      groundingState,
+      status,
+      timestamp: new Date(m.created_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
+  });
+
+  return {
+    id: String(convData.id),
+    title: convData.title,
+    timestamp: new Date(convData.created_at).toLocaleDateString(),
+    group: "Today" as const,
+    messages,
+  };
+}
+
+// Document API Helpers
+export interface Document {
+  id: string;
+  title: string;
+  accessTier: string;
+  // Add other fields as needed
+}
+
+export async function listDocuments(): Promise<Document[]> {
+  const token = getStoredToken();
+  if (!token) return [];
+  const res = await fetch(`${API_BASE_URL}/api/v1/documents`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (res.status === 401) {
+    removeStoredToken();
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to list documents (${res.status})`);
+  }
+  return await res.json();
+}
+
+export async function uploadDocument(file: File): Promise<Document> {
+  const token = getStoredToken();
+  if (!token) throw new Error("Not authenticated");
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE_URL}/api/v1/documents`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: form,
+  });
+  if (res.status === 401) {
+    removeStoredToken();
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    throw new Error(`Upload failed (${res.status})`);
+  }
+  return await res.json();
+}
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  const token = getStoredToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${API_BASE_URL}/api/v1/documents/${documentId}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (res.status === 401) {
+    removeStoredToken();
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    throw new Error(`Delete failed (${res.status})`);
+  }
 }
 
 export async function sendMessage(
   conversationId: string,
   userMessageText: string
-): Promise<{ userMessage: MockMessage; assistantMessage: MockMessage }> {
+): Promise<{
+  userMessage: MockMessage;
+  assistantMessage: MockMessage;
+  conversationId: string;
+}> {
+  const token = getStoredToken();
+  if (!token) {
+    throw new Error("Not authenticated");
+  }
+
   const timestamp = new Date().toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -186,55 +359,71 @@ export async function sendMessage(
     timestamp,
   };
 
-  await new Promise((resolve) => setTimeout(resolve, 800));
-
-  const lowerQuery = userMessageText.toLowerCase();
-  let assistantMessage: MockMessage;
-
-  if (lowerQuery.includes("salary") || lowerQuery.includes("hr") || lowerQuery.includes("appraisal")) {
-    assistantMessage = {
-      id: `m-ast-${Date.now()}`,
-      role: "assistant",
-      groundingState: "restricted",
-      timestamp,
-      content: "RESTRICTED_ACCESS",
-      restrictedData: {
-        requiredTier: "Staff / Admin",
-        targetOffice: "HIT Human Resources & Staff Relations Office",
-        officeContact: "hr-enquiries@hit.ac.zw",
-      },
-    };
-  } else {
-    assistantMessage = {
-      id: `m-ast-${Date.now()}`,
-      role: "assistant",
-      groundingState: "grounded",
-      timestamp,
-      content: `Your query regarding "${userMessageText}" has been processed against the official HIT Document Repository. \n\n• Information retrieved from HIT General Academic Regulations (2026) confirms compliance with institutional standards [1].\n\n• For further guidance or formal submission, consult your Department Chairperson [2].`,
-      citations: {
-        1: {
-          index: 1,
-          documentTitle: "HIT Academic Regulations & Guidelines 2026",
-          department: "Academic Affairs",
-          documentType: "Institutional Policy",
-          lastUpdated: "10 Feb 2026",
-          accessTier: "Public",
-          excerpt: "All registered students and academic staff are bound by the general academic and administrative regulations published in the university charter.",
-          documentUrl: "#",
-        },
-        2: {
-          index: 2,
-          documentTitle: "HIT Student Code of Conduct and Administration",
-          department: "Student Affairs",
-          documentType: "Student Handbook",
-          lastUpdated: "15 Jan 2026",
-          accessTier: "Student",
-          excerpt: "Official academic petitions, module adjustments, or special exemptions must be submitted through the department chairperson.",
-          documentUrl: "#",
-        },
-      },
-    };
+  const cleanConversationId = parseInt(conversationId, 10);
+  const bodyPayload: any = {
+    question: userMessageText,
+  };
+  if (!isNaN(cleanConversationId)) {
+    bodyPayload.conversation_id = cleanConversationId;
   }
 
-  return { userMessage, assistantMessage };
+  const res = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(bodyPayload),
+  });
+
+  if (res.status === 401) {
+    removeStoredToken();
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    throw new Error(`Chat request failed (${res.status})`);
+  }
+
+  const data = await res.json();
+
+  const citationsMap: { [key: number]: any } = {};
+  if (data.citations && Array.isArray(data.citations)) {
+    data.citations.forEach((cit: any, idx: number) => {
+      const citationIndex = idx + 1;
+      citationsMap[citationIndex] = {
+        index: citationIndex,
+        documentTitle: cit.document_title || "Unknown Document",
+        excerpt: cit.excerpt || "",
+        department: "HIT Document Repository",
+        documentType: "Institutional Document",
+        lastUpdated: cit.created_at ? new Date(cit.created_at).toLocaleDateString() : "Recent",
+        accessTier: mapRoleToAccessTier(cit.access_tier),
+        documentUrl: "#",
+      };
+    });
+  }
+
+  let groundingState: "grounded" | "restricted" = "grounded";
+  let content = data.answer || "";
+  const status = data.status || "ANSWERED";
+
+  if (status === "NOT_ENOUGH_INFORMATION") {
+    content = "I don't have enough information in the available documents to answer that.";
+    groundingState = "restricted";
+  } else if (status === "PARSE_ERROR") {
+    content = "Something went wrong generating a response, please try again.";
+    groundingState = "restricted";
+  }
+
+  const assistantMessage: MockMessage = {
+    id: `m-ast-${data.message_id || Date.now()}`,
+    role: "assistant",
+    timestamp,
+    groundingState,
+    status,
+    content,
+    ...(Object.keys(citationsMap).length > 0 ? { citations: citationsMap } : {}),
+  };
+
+  return { userMessage, assistantMessage, conversationId: String(data.conversation_id) };
 }

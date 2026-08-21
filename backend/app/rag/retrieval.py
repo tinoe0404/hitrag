@@ -61,7 +61,7 @@ def retrieve(
 
     # Query db for chunks ordered by distance ascending, joined on document access tier
     results = (
-        db.query(Chunk, Document.title, distance_expr)
+        db.query(Chunk, Document.title, Document.access_tier, Document.created_at, distance_expr)
         .join(Document, Chunk.document_id == Document.id)
         .filter(Chunk.embedding.is_not(None))
         .filter(Document.access_tier.in_(allowed_tiers))
@@ -71,7 +71,7 @@ def retrieve(
     )
 
     retrieved_chunks = []
-    for chunk, title, distance in results:
+    for chunk, title, access_tier, created_at, distance in results:
         dist_val = float(distance) if distance is not None else 0.0
         retrieved_chunks.append({
             "chunk_id": chunk.id,
@@ -79,6 +79,8 @@ def retrieve(
             "document_title": title,
             "page_number": chunk.page_number,
             "content": chunk.content,
+            "access_tier": access_tier,
+            "created_at": created_at,
             "cosine_similarity": round(1.0 - dist_val, 6),
             "cosine_distance": round(dist_val, 6),
         })
